@@ -1,5 +1,6 @@
 import { Store } from './core/store.js?v=20260324-citymenu2';
 import { Router } from './core/router.js?v=20260324-citymenu2';
+import { GAME_STATES } from './core/gameStates.js';
 import { MenuScene } from './scenes/MenuScene.js?v=20260324-citymenu2';
 import { WorldScene } from './scenes/WorldScene.js?v=20260324-citymenu2';
 
@@ -9,6 +10,7 @@ const initialState = {
   app: {
     booted: false,
     currentScene: null,
+    gameState: GAME_STATES.MAIN_MENU,
   },
   world: {
     seed: null,
@@ -16,6 +18,13 @@ const initialState = {
     party: [],
     lobbyCode: null,
     createdAt: null,
+    day: 1,
+    gold: 26,
+    activeContract: null,
+    interfaceState: GAME_STATES.WORLD_MAP,
+    clearedNodes: [],
+    discoveredNodes: [],
+    shopStockByNode: {},
   },
 };
 

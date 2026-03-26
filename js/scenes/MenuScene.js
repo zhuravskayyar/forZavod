@@ -1,4 +1,5 @@
 import { BaseScene } from './BaseScene.js';
+import { GAME_STATES } from '../core/gameStates.js';
 
 const APP_BASE_URL = new URL('../../', import.meta.url);
 const LOBBY_DOC_URL = new URL('fantasy_coop_lobby_localized.html', APP_BASE_URL);
@@ -150,6 +151,14 @@ export class MenuScene extends BaseScene {
 
   async startAdventure() {
     return this.startAdventureWithLobbyState({});
+  }
+
+  async enter(payload = {}) {
+    await super.enter(payload);
+    this.store.update((state) => {
+      state.app.gameState = GAME_STATES.MAIN_MENU;
+      return state;
+    });
   }
 
   async handleLobbyStart(event) {

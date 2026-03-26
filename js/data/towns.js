@@ -1,0 +1,110 @@
+const TOWNS = {
+  start_village: {
+    id: 'town_zavodske',
+    name: 'Zavodske',
+    tier: 1,
+    region: 'south_fields',
+    prosperity: 'trade',
+    shopQuality: 1,
+    restCostMultiplier: 1,
+    repairModifier: 1,
+    serviceList: ['inn', 'shop', 'quests', 'trainer'],
+    rarityBias: {
+      common: 70,
+      uncommon: 25,
+      rare: 5,
+      epic: 0,
+    },
+  },
+  hunter_hamlet: {
+    id: 'town_hunter_hamlet',
+    name: 'Hunter Hamlet',
+    tier: 1,
+    region: 'wildwoods',
+    prosperity: 'frontier',
+    shopQuality: 1,
+    restCostMultiplier: 0.95,
+    repairModifier: 1.05,
+    serviceList: ['shop', 'quests'],
+    rarityBias: {
+      common: 65,
+      uncommon: 30,
+      rare: 5,
+      epic: 0,
+    },
+  },
+  south_outpost: {
+    id: 'town_south_outpost',
+    name: 'South Outpost',
+    tier: 1,
+    region: 'greenbelt',
+    prosperity: 'military',
+    shopQuality: 1,
+    restCostMultiplier: 1.1,
+    repairModifier: 0.95,
+    serviceList: ['inn', 'shop', 'quests'],
+    rarityBias: {
+      common: 70,
+      uncommon: 25,
+      rare: 5,
+      epic: 0,
+    },
+  },
+  main_city: {
+    id: 'town_main_city',
+    name: 'Main City',
+    tier: 2,
+    region: 'trade_marches',
+    prosperity: 'trade',
+    shopQuality: 2,
+    restCostMultiplier: 1.15,
+    repairModifier: 0.9,
+    serviceList: ['inn', 'shop', 'quests', 'trainer'],
+    rarityBias: {
+      common: 45,
+      uncommon: 35,
+      rare: 15,
+      epic: 5,
+    },
+  },
+  port: {
+    id: 'town_port',
+    name: 'Port',
+    tier: 2,
+    region: 'coastline',
+    prosperity: 'trade',
+    shopQuality: 2,
+    restCostMultiplier: 1.2,
+    repairModifier: 1,
+    serviceList: ['inn', 'shop', 'quests'],
+    rarityBias: {
+      common: 45,
+      uncommon: 35,
+      rare: 15,
+      epic: 5,
+    },
+  },
+};
+
+export function getTownDefinition(node) {
+  if (!node) return null;
+  return TOWNS[node.id] || {
+    id: `town_${node.id}`,
+    name: node.nameEn || node.id,
+    tier: Math.max(1, node.tier || 1),
+    region: node.regionId || 'frontier',
+    prosperity: 'mixed',
+    shopQuality: Math.max(1, Math.min(3, node.tier || 1)),
+    restCostMultiplier: 1,
+    repairModifier: 1,
+    serviceList: ['inn', 'shop'],
+    rarityBias: {
+      common: 60,
+      uncommon: 30,
+      rare: 10,
+      epic: 0,
+    },
+  };
+}
+
+export default TOWNS;

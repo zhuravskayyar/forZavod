@@ -2288,3 +2288,121 @@ body {
     width: 164px !important;
   }
 }
+
+#scene-world .game-hero-meta-row,
+#scene-world .game-hero-focus-row {
+  display: flex !important;
+}
+
+#scene-world .game-hero-focus-row {
+  justify-content: center !important;
+}
+
+#scene-world .game-city-menu-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+#scene-world .game-city-menu-tag {
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 230, 186, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 239, 214, 0.82);
+  font: 700 10px/1 "Cinzel", serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#scene-world .game-node-menu-actions,
+#scene-world .game-levelup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+#scene-world .game-levelup-panel {
+  position: absolute;
+  right: 24px;
+  bottom: 374px;
+  width: min(360px, calc(100vw - 48px));
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(14px);
+  transition: opacity 180ms ease, transform 180ms ease;
+  z-index: 24;
+}
+
+#scene-world .game-levelup-panel.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+#scene-world .game-levelup-shell {
+  padding: 18px 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 226, 179, 0.16);
+  background:
+    radial-gradient(circle at top, rgba(205, 154, 82, 0.18), transparent 38%),
+    linear-gradient(180deg, rgba(54, 35, 29, 0.96), rgba(18, 12, 10, 0.98));
+  box-shadow: 0 26px 54px rgba(0, 0, 0, 0.36);
+}
+
+#scene-world .game-levelup-kicker {
+  color: rgba(255, 229, 188, 0.72);
+  font: 700 11px/1 "Cinzel", serif;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+#scene-world .game-levelup-title {
+  margin-top: 8px;
+  color: #fff4dc;
+  font: 700 26px/1.06 "Cinzel Decorative", serif;
+}
+
+#scene-world .game-levelup-copy {
+  margin-top: 10px;
+  color: rgba(247, 234, 210, 0.84);
+  font: 600 14px/1.45 "Crimson Pro", serif;
+}
+
+#scene-world .game-levelup-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+#scene-world .game-levelup-preview span {
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 239, 214, 0.86);
+  font: 700 12px/1 "Cinzel", serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+#scene-world .game-levelup-btn {
+  min-width: 132px;
+}
+
+@media (max-width: 980px) {
+  #scene-world .game-levelup-panel {
+    position: static;
+    width: auto;
+    margin: 12px 16px 0;
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  #scene-world .game-levelup-panel:not(.is-open) {
+    display: none;
+  }
+}

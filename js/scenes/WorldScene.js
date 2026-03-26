@@ -1,6 +1,26 @@
 import { BaseScene } from './BaseScene.js';
+import { GAME_STATES, mapTownSectionToState } from '../core/gameStates.js';
+import {
+  HERO_STAT_LABELS,
+  LEVELUP_STAT_KEYS,
+  addItemToInventory,
+  allocateHeroStatPoint,
+  buildShopStock,
+  canHeroEquipItem,
+  createRuntimeHero,
+  equipInventoryItem,
+  gainHeroXp,
+  getItemById,
+  recalculateHero,
+  sellInventoryItem,
+  serializeHero,
+  spendHeroFocus,
+  useConsumable,
+} from '../core/progression.js';
 import heroesData from '../data/heroes.js';
+import { getTownDefinition } from '../data/towns.js';
 import worldBlueprint from '../data/worldBlueprint.js';
+import { ModalSystem } from '../ui/modalSystem.js';
 
 const WORLD_ATLAS_IMAGE_URL = new URL('../../assets/world/world_materials_atlas.png', import.meta.url);
 const WORLD_ATLAS_META_URL = new URL('../../assets/world/world_materials_atlas.json', import.meta.url);
@@ -249,6 +269,738 @@ function xmur3(str) {
     return h >>> 0;
   };
 }
+/*
+  isCityNode(node) {
+    return Boolean(node && SETTLEMENT_NODE_TYPES.has(node.type));
+  }
+
+  getCityMenuOptions(node) {
+    if (!this.isCityNode(node)) return [];
+    const town = getTownDefinition(node);
+    const options = [];
+    if (town.serviceList.includes('inn')) {
+      options.push({ id: 'inn', labelUk: 'Inn', icon: CITY_MENU_ICONS.inn });
+    }
+    if (town.serviceList.includes('shop')) {
+      options.push({ id: 'market', labelUk: 'Shop', icon: CITY_MENU_ICONS.market });
+    }
+    if (town.serviceList.includes('quests')) {
+      options.push({ id: 'contracts', labelUk: 'Quests', icon: CITY_MENU_ICONS.quests });
+    }
+    options.push({ id: 'healer', labelUk: 'Healer', icon: CITY_MENU_ICONS.healer });
+    options.push({ id: 'meditation', labelUk: 'Focus', icon: CITY_MENU_ICONS.meditation });
+    if (town.serviceList.includes('trainer')) {
+      options.push({ id: 'trainer', labelUk: 'Trainer', icon: CITY_MENU_ICONS.blessing });
+    }
+    return options;
+  }
+
+  getInterfaceState() {
+    if (this.game.moving) return GAME_STATES.MOVEMENT;
+    const hero = this.getSelectedHero();
+    if (hero?.unspentStatPoints > 0 && !this.game.nodeMenu.open) {
+      return GAME_STATES.LEVEL_UP;
+    }
+    if (this.game.nodeMenu.open) {
+      const node = this.getNodeById(this.game.nodeMenu.nodeId);
+      if (this.isCityNode(node)) {
+        return mapTownSectionToState(this.game.nodeMenu.section);
+      }
+      if (this.game.nodeMenu.section === 'contracts') return GAME_STATES.QUEST_BOARD;
+      return GAME_STATES.EVENT;
+    }
+    return GAME_STATES.WORLD_MAP;
+  }
+
+  refreshInterface() {
+    this.syncStore();
+    this.renderPartyHud();
+    this.updateHud(this.map.selected);
+    this.draw();
+  }
+
+  getHeroQuickConsumables(hero) {
+    return (hero?.inventory || [])
+      .filter((item) => item.type === 'consumable')
+      .slice(0, 3);
+  }
+
+  renderSelectedActions(hero, node) {
+    const quickActions = this.getHeroQuickConsumables(hero).map((item) => `
+      <button class="btn btn--ghost game-selected-btn" type="button" data-quick-consume="${item.id}">${item.name}</button>
+    `).join('');
+    const canVisit = this.canInteractWithNode(node, hero);
+    this.dom.selectedActions.innerHTML = `
+      <button id="visitNodeBtn" class="btn btn--ghost game-selected-btn" type="button" ${node ? '' : 'hidden'} ${canVisit ? '' : 'disabled'}>
+        ${node ? this.getNodeVisitLabel(node) : 'Visit'}
+      </button>
+      ${quickActions}
+    `;
+    this.dom.visitNodeBtn = this.dom.selectedActions.querySelector('#visitNodeBtn');
+    if (this.dom.visitNodeBtn) {
+      this.dom.visitNodeBtn.addEventListener('click', () => this.openNodeMenu());
+    }
+  }
+
+  renderLevelUpPanel(hero = this.getSelectedHero()) {
+    if (!hero || hero.unspentStatPoints <= 0) {
+      this.dom.levelUpPanel.classList.remove('is-open');
+      this.dom.levelUpPanel.innerHTML = '';
+      return;
+    }
+    const buttons = LEVELUP_STAT_KEYS.map((statKey) => `
+      <button class="btn btn--ghost game-levelup-btn" type="button" data-levelup-stat="${statKey}">
+        +1 ${HERO_STAT_LABELS[statKey]}
+      </button>
+    `).join('');
+    this.dom.levelUpPanel.classList.add('is-open');
+    this.dom.levelUpPanel.innerHTML = `
+      <div class="game-levelup-shell">
+        <div class="game-levelup-kicker">LEVEL UP</div>
+        <div class="game-levelup-title">${hero.name} reached level ${hero.level}</div>
+        <div class="game-levelup-copy">Spend ${hero.unspentStatPoints} stat point${hero.unspentStatPoints === 1 ? '' : 's'} to finish the upgrade.</div>
+        <div class="game-levelup-preview">
+          <span>HP ${hero.hp}/${hero.maxHp}</span>
+          <span>Focus ${hero.focus}/${hero.maxFocus}</span>
+          <span>DMG ${hero.derived.physicalDamage}/${hero.derived.magicDamage}</span>
+          <span>INIT ${hero.derived.initiative}</span>
+        </div>
+        <div class="game-levelup-actions">${buttons}</div>
+      </div>
+    `;
+  }
+
+  handleLevelUpPanelClick(event) {
+    const button = event.target.closest('[data-levelup-stat]');
+    if (!button) return;
+    const hero = this.getSelectedHero();
+    if (!hero) return;
+    const statKey = button.dataset.levelupStat;
+    if (!allocateHeroStatPoint(hero, statKey)) return;
+    this.game.transientNotice = `${hero.name} gained +1 ${HERO_STAT_LABELS[statKey]}.`;
+    this.refreshInterface();
+  }
+
+  handleHeroArrival(hero, tile) {
+    const node = tile?.node;
+    if (!hero || !node) return;
+    if (!this.game.discoveredNodes.includes(node.id)) {
+      const xpReward = this.isCityNode(node) ? 12 + node.tier * 4 : 18 + node.tier * 6;
+      const goldReward = this.isCityNode(node) ? 3 + node.tier * 2 : 2 + node.tier * 3;
+      this.game.discoveredNodes.push(node.id);
+      this.game.gold += goldReward;
+      const result = gainHeroXp(hero, xpReward);
+      const levelSuffix = result.levels.length ? ` Level up to ${hero.level}.` : '';
+      this.game.transientNotice = `Discovered ${node.nameEn || node.id}: +${xpReward} XP, +${goldReward}g.${levelSuffix}`;
+    }
+    this.completeActiveContract(node, hero);
+  }
+
+  completeActiveContract(node, hero) {
+    const contract = this.game.activeContract;
+    if (!contract || contract.targetNodeId !== node.id) return;
+    this.game.gold += contract.goldReward || 0;
+    const result = gainHeroXp(hero, contract.xpReward || 0);
+    this.game.activeContract = null;
+    const levelSuffix = result.levels.length ? ` ${hero.name} reached level ${hero.level}.` : '';
+    this.game.transientNotice = `Contract complete: +${contract.goldReward || 0}g, +${contract.xpReward || 0} XP.${levelSuffix}`;
+  }
+
+  handleNodeMenuClick(event) {
+    const closeButton = event.target.closest('[data-node-close]');
+    if (closeButton) {
+      this.closeNodeMenu();
+      this.updateHud(this.map.selected);
+      return;
+    }
+    const sectionButton = event.target.closest('[data-node-section]');
+    if (sectionButton) {
+      this.game.nodeMenu.section = sectionButton.dataset.nodeSection;
+      this.game.nodeMenu.notice = '';
+      this.updateHud(this.map.selected);
+      return;
+    }
+    const restButton = event.target.closest('[data-node-rest]');
+    if (restButton) {
+      this.useInnRoom(restButton.dataset.nodeRest);
+      return;
+    }
+    const consumeButton = event.target.closest('[data-quick-consume]');
+    if (consumeButton) {
+      this.consumeSelectedHeroItem(consumeButton.dataset.quickConsume);
+      return;
+    }
+    const levelUpButton = event.target.closest('[data-levelup-stat]');
+    if (levelUpButton) {
+      this.handleLevelUpPanelClick(event);
+      return;
+    }
+    const buyButton = event.target.closest('[data-node-shop-buy]');
+    if (buyButton) {
+      this.buyTownItem(buyButton.dataset.nodeShopBuy);
+      return;
+    }
+    const sellButton = event.target.closest('[data-node-shop-sell]');
+    if (sellButton) {
+      this.sellTownItem(sellButton.dataset.nodeShopSell);
+      return;
+    }
+    const equipButton = event.target.closest('[data-node-shop-equip]');
+    if (equipButton) {
+      this.equipTownItem(equipButton.dataset.nodeShopEquip);
+      return;
+    }
+    const serviceButton = event.target.closest('[data-node-service]');
+    if (serviceButton) {
+      this.useNodeService(serviceButton.dataset.nodeService);
+      return;
+    }
+    const contractButton = event.target.closest('[data-node-contract]');
+    if (contractButton) {
+      this.acceptNodeContract(contractButton.dataset.nodeContract);
+      return;
+    }
+    const actionButton = event.target.closest('[data-node-action]');
+    if (actionButton) {
+      const action = actionButton.dataset.nodeAction;
+      if (action === 'devote') this.devoteAtNode();
+      if (action === 'expedition') this.startNodeExpedition({ useFocus: false });
+      if (action === 'expedition-focus') this.startNodeExpedition({ useFocus: true });
+      if (action === 'route') this.pinRouteObjective(actionButton.dataset.nodeTarget);
+    }
+  }
+  consumeSelectedHeroItem(itemId) {
+    const hero = this.getSelectedHero();
+    if (!hero) return;
+    const result = useConsumable(hero, itemId);
+    if (!result.ok) return;
+    this.game.transientNotice = `${hero.name}: ${result.message}`;
+    this.refreshInterface();
+  }
+
+  getInnOptions(node) {
+    const town = getTownDefinition(node);
+    const baseCost = Math.round((6 + node.tier * 2) * town.restCostMultiplier);
+    return [
+      { id: 'cheap', label: 'Cheap Room', cost: Math.max(3, baseCost - 2), healRatio: 0.4, focus: 0, cleanse: false },
+      { id: 'standard', label: 'Standard Room', cost: baseCost, healRatio: 1, focus: 1, cleanse: false },
+      { id: 'luxury', label: 'Luxury Room', cost: baseCost + 5, healRatio: 1, focus: 99, cleanse: true },
+    ];
+  }
+
+  useInnRoom(roomId) {
+    const hero = this.getSelectedHero();
+    const node = this.getNodeById(this.game.nodeMenu.nodeId);
+    const room = this.getInnOptions(node).find((entry) => entry.id === roomId);
+    if (!hero || !node || !room) return;
+    if (this.game.gold < room.cost) {
+      this.setNodeMenuNotice('Not enough gold for that room.');
+      return;
+    }
+    this.game.gold -= room.cost;
+    hero.hp = Math.min(hero.maxHp, room.healRatio >= 1 ? hero.maxHp : Math.ceil(hero.maxHp * room.healRatio));
+    hero.focus = Math.min(hero.maxFocus, room.focus >= 99 ? hero.maxFocus : hero.focus + room.focus);
+    if (room.cleanse) {
+      hero.curses = [];
+      hero.statusEffects = [];
+      hero.poisoned = false;
+    }
+    hero.movePoints = 0;
+    hero.turnEnded = true;
+    this.game.transientNotice = `${hero.name} rested at the inn.`;
+    this.advanceHeroTurn();
+    this.refreshInterface();
+  }
+
+  ensureTownStock(node) {
+    if (!node) return [];
+    if (!this.game.shopStockByNode[node.id]) {
+      const town = getTownDefinition(node);
+      const averageLevel = Math.max(1, Math.round(this.game.party.reduce((sum, hero) => sum + hero.level, 0) / Math.max(1, this.game.party.length)));
+      const stock = [];
+      const baseConsumables = ['field_bandage_01', 'focus_tonic_01', 'antidote_01'];
+      const gearPool = ['iron_sword_01', 'hunter_bow_01', 'ash_staff_01', 'quilted_armor_01', 'chain_vest_01', 'mystic_robe_01']
+        .map((itemId) => getItemById(itemId))
+        .filter((item) => item && item.levelRequirement <= averageLevel + town.shopQuality - 1)
+        .filter((item) => !item.classRestriction?.length || this.game.party.some((hero) => item.classRestriction.includes(hero.classKey)))
+        .map((item) => item.id);
+      stock.push(...baseConsumables);
+      stock.push(...gearPool);
+      this.game.shopStockByNode[node.id] = stock.slice(0, town.shopQuality >= 2 ? 7 : 5);
+    }
+    return this.game.shopStockByNode[node.id];
+  }
+
+  getTownStock(node) {
+    return buildShopStock(this.ensureTownStock(node));
+  }
+
+  getItemDeltaLines(hero, item) {
+    if (!item) return [];
+    if (item.type === 'consumable') {
+      return (item.effects || []).map((effect) => {
+        if (effect.type === 'heal') return `Heals ${effect.amount} HP`;
+        if (effect.type === 'focus') return `Restores ${effect.amount} Focus`;
+        if (effect.type === 'cleanse') return 'Removes poison';
+        return effect.type;
+      });
+    }
+    const current = hero?.equipment?.[item.slot] || null;
+    const currentStats = current?.stats || {};
+    return Object.entries(item.stats || {})
+      .map(([key, value]) => {
+        const delta = value - (currentStats[key] || 0);
+        if (!delta) return null;
+        const sign = delta > 0 ? '+' : '';
+        return `${key} ${sign}${delta}`;
+      })
+      .filter(Boolean);
+  }
+
+  buyTownItem(itemId) {
+    const hero = this.getSelectedHero();
+    const node = this.getNodeById(this.game.nodeMenu.nodeId);
+    const stockIds = this.ensureTownStock(node);
+    const stockIndex = stockIds.findIndex((entry) => entry === itemId);
+    const item = getItemById(itemId);
+    if (!hero || !node || stockIndex === -1 || !item) return;
+    if (this.game.gold < item.priceBuy) {
+      this.setNodeMenuNotice('Not enough gold.');
+      return;
+    }
+    if (hero.inventory.length >= 12) {
+      this.setNodeMenuNotice('Inventory is full.');
+      return;
+    }
+    this.game.gold -= item.priceBuy;
+    addItemToInventory(hero, item);
+    this.game.shopStockByNode[node.id].splice(stockIndex, 1);
+    if (item.type !== 'consumable' && !hero.equipment[item.slot] && canHeroEquipItem(hero, item)) {
+      equipInventoryItem(hero, item.id);
+      this.game.transientNotice = `${item.name} bought and equipped.`;
+    } else {
+      this.game.transientNotice = `${item.name} added to ${hero.name}'s inventory.`;
+    }
+    this.refreshInterface();
+  }
+
+  sellTownItem(itemId) {
+    const hero = this.getSelectedHero();
+    if (!hero) return;
+    const value = sellInventoryItem(hero, itemId);
+    if (!value) {
+      this.setNodeMenuNotice('Item cannot be sold.');
+      return;
+    }
+    this.game.gold += value;
+    this.game.transientNotice = `Sold item for ${value}g.`;
+    this.refreshInterface();
+  }
+
+  equipTownItem(itemId) {
+    const hero = this.getSelectedHero();
+    if (!hero) return;
+    const result = equipInventoryItem(hero, itemId);
+    if (!result.ok) {
+      this.setNodeMenuNotice(result.reason === 'restricted' ? 'Hero cannot equip that item yet.' : 'Unable to equip item.');
+      return;
+    }
+    this.game.transientNotice = `${hero.name} equipped ${result.item.name}.`;
+    this.refreshInterface();
+  }
+
+  getNodeContracts(node) {
+    const tags = [...new Set(node?.questTags || [])].slice(0, 3);
+    const targets = (node?.connectedTo || [])
+      .map((nodeId) => this.getNodeById(nodeId))
+      .filter(Boolean);
+    return tags.map((tag, index) => {
+      const target = targets[index % Math.max(1, targets.length)] || node;
+      const lower = tag.toLowerCase();
+      let type = 'Explore';
+      if (lower.includes('escort') || lower.includes('supplies') || lower.includes('delivery') || lower.includes('caravan')) type = 'Delivery';
+      if (lower.includes('hunt') || lower.includes('wolves') || lower.includes('beast') || lower.includes('bounty')) type = 'Bounty';
+      if (lower.includes('relic') || lower.includes('artifact') || lower.includes('map') || lower.includes('key')) type = 'Retrieval';
+      const goldReward = 10 + node.tier * 4 + index * 2;
+      const xpReward = 18 + node.tier * 8 + index * 4;
+      return {
+        id: `${node.id}-${tag}`,
+        type,
+        typeUk: type,
+        titleUk: `${type}: ${target.nameEn || target.id}`,
+        objective: `Reach ${target.nameEn || target.id} from ${node.nameEn || node.id}.`,
+        reward: `${goldReward}g • ${xpReward} XP`,
+        goldReward,
+        xpReward,
+        targetNodeId: target.id,
+      };
+    });
+  }
+
+  acceptNodeContract(contractId) {
+    const node = this.getNodeById(this.game.nodeMenu.nodeId);
+    const contract = this.getNodeContracts(node).find((entry) => entry.id === contractId);
+    if (!contract) return;
+    this.game.activeContract = {
+      ...contract,
+      sourceNodeId: node.id,
+      sourceNodeName: node.nameEn || node.id,
+    };
+    this.game.objective = contract.objective;
+    this.game.transientNotice = `Accepted contract: ${contract.titleUk}.`;
+    this.refreshInterface();
+  }
+
+  startNodeExpedition({ useFocus = false } = {}) {
+    const node = this.getNodeById(this.game.nodeMenu.nodeId);
+    const hero = this.getSelectedHero();
+    if (!node || !hero) return;
+    if (this.game.clearedNodes.includes(node.id)) {
+      this.setNodeMenuNotice('This expedition was already cleared.');
+      return;
+    }
+    if (useFocus && !spendHeroFocus(hero, 1)) {
+      this.setNodeMenuNotice('Need 1 Focus for the boosted expedition.');
+      return;
+    }
+    const xpReward = 22 + node.tier * 10 + (useFocus ? 10 : 0);
+    const goldReward = 6 + node.tier * 4 + (useFocus ? 4 : 0);
+    const itemRewardId = node.type === 'temple'
+      ? 'focus_tonic_01'
+      : node.type === 'dungeon' || node.type === 'mine'
+        ? 'antidote_01'
+        : 'field_bandage_01';
+    this.game.clearedNodes.push(node.id);
+    this.game.gold += goldReward;
+    addItemToInventory(hero, itemRewardId);
+    const result = gainHeroXp(hero, xpReward);
+    this.game.objective = `Expedition cleared at ${node.nameEn || node.id}.`;
+    const focusText = useFocus ? ' Focus spent for a stronger result.' : '';
+    const levelSuffix = result.levels.length ? ` ${hero.name} reached level ${hero.level}.` : '';
+    this.game.transientNotice = `Expedition rewards: +${goldReward}g, +${xpReward} XP, ${getItemById(itemRewardId)?.name || 'loot'}.${focusText}${levelSuffix}`;
+    this.refreshInterface();
+  }
+  renderCityMenuDetail(node, section) {
+    const hero = this.getSelectedHero();
+    const town = getTownDefinition(node);
+    const service = this.getNodeServiceEntries(node).find((entry) => entry.id === section);
+    if (section === 'inn') {
+      const options = this.getInnOptions(node).map((room) => `
+        <div class="game-city-menu-row">
+          <div>
+            <strong>${room.label}</strong>
+            <p>${room.healRatio >= 1 ? 'Full HP' : `${Math.round(room.healRatio * 100)}% HP`} • ${room.focus >= 99 ? 'Full Focus' : `+${room.focus} Focus`}${room.cleanse ? ' • Cleanse' : ''}</p>
+          </div>
+          <button class="btn btn--ghost game-city-menu-action" type="button" data-node-rest="${room.id}">${room.cost}g</button>
+        </div>
+      `).join('');
+      return `
+        <div class="game-city-menu-detail-copy">${town.name} works as the safe reset point for the expedition loop. Pick the room tier based on how much gold and Focus you want to spend before the next route.</div>
+        <div class="game-city-menu-list">${options}</div>
+      `;
+    }
+
+    if (section === 'market') {
+      const stock = this.getTownStock(node).map((item) => {
+        const deltas = this.getItemDeltaLines(hero, item).map((line) => `<span class="game-city-menu-tag">${line}</span>`).join('');
+        return `
+          <div class="game-city-menu-row">
+            <div>
+              <strong>${item.name}</strong>
+              <p>${item.rarity} • lvl ${item.levelRequirement} ${item.classRestriction?.length ? `• ${item.classRestriction.join(', ')}` : ''}</p>
+              ${deltas ? `<div class="game-city-menu-tags">${deltas}</div>` : ''}
+            </div>
+            <button class="btn btn--ghost game-city-menu-action" type="button" data-node-shop-buy="${item.id}">Buy • ${item.priceBuy}g</button>
+          </div>
+        `;
+      }).join('');
+      const inventory = (hero?.inventory || []).map((item) => `
+        <div class="game-city-menu-row">
+          <div>
+            <strong>${item.name}</strong>
+            <p>${item.type} • sell ${item.priceSell || Math.max(1, Math.round(item.priceBuy * 0.45))}g</p>
+          </div>
+          <div class="game-city-menu-actions">
+            ${item.type === 'consumable' ? `<button class="btn btn--ghost game-city-menu-action" type="button" data-quick-consume="${item.id}">Use</button>` : `<button class="btn btn--ghost game-city-menu-action" type="button" data-node-shop-equip="${item.id}">Equip</button>`}
+            <button class="btn btn--ghost game-city-menu-action" type="button" data-node-shop-sell="${item.id}">Sell</button>
+          </div>
+        </div>
+      `).join('') || '<div class="game-city-menu-detail-copy">Inventory is empty.</div>';
+      return `
+        <div class="game-city-menu-detail-copy">MVP shop loop: buy weapons, armor and consumables, then compare them against the selected hero's current loadout.</div>
+        <div class="game-city-menu-list">${stock || '<div class="game-city-menu-detail-copy">Stock is empty.</div>'}</div>
+        <div class="game-city-menu-detail-copy">Inventory</div>
+        <div class="game-city-menu-list">${inventory}</div>
+      `;
+    }
+
+    if (section === 'contracts') {
+      const contracts = this.getNodeContracts(node).map((contract) => `
+        <div class="game-city-menu-row">
+          <div>
+            <strong>${contract.titleUk}</strong>
+            <p>${contract.objective}</p>
+          </div>
+          <button class="btn btn--ghost game-city-menu-action" type="button" data-node-contract="${contract.id}">Take • ${contract.reward}</button>
+        </div>
+      `).join('');
+      return `
+        <div class="game-city-menu-detail-copy">Quest board rewards are now tied into the new XP and economy loop. Reach the target node to auto-complete the active contract.</div>
+        <div class="game-city-menu-list">${contracts || '<div class="game-city-menu-detail-copy">No contracts available.</div>'}</div>
+      `;
+    }
+
+    if (section === 'trainer') {
+      const buttons = LEVELUP_STAT_KEYS.map((statKey) => `
+        <button class="btn btn--ghost game-city-menu-action" type="button" data-levelup-stat="${statKey}" ${hero?.unspentStatPoints > 0 ? '' : 'disabled'}>
+          +1 ${HERO_STAT_LABELS[statKey]}
+        </button>
+      `).join('');
+      return `
+        <div class="game-city-menu-detail-copy">Model B from the design doc is active here: each level grants one auto class stat and one free stat point to spend manually.</div>
+        <div class="game-city-menu-stats">
+          <div class="game-city-menu-stat"><span>Level</span><strong>${hero?.level ?? 1}</strong></div>
+          <div class="game-city-menu-stat"><span>XP</span><strong>${hero?.xp ?? 0}/${hero?.xpToNext || 'MAX'}</strong></div>
+          <div class="game-city-menu-stat"><span>Free Points</span><strong>${hero?.unspentStatPoints ?? 0}</strong></div>
+          <div class="game-city-menu-stat"><span>Perk Points</span><strong>${hero?.perkPoints ?? 0}</strong></div>
+        </div>
+        <div class="game-city-menu-actions">${buttons}</div>
+      `;
+    }
+
+    if (service) {
+      return `
+        <div class="game-city-menu-detail-copy">${service.effect}</div>
+        <div class="game-city-menu-stats">
+          <div class="game-city-menu-stat"><span>Hero</span><strong>${hero?.name || '—'}</strong></div>
+          <div class="game-city-menu-stat"><span>Price</span><strong>${service.cost ?? 0}g</strong></div>
+          <div class="game-city-menu-stat"><span>HP</span><strong>${hero?.hp ?? 0}/${hero?.maxHp ?? 0}</strong></div>
+          <div class="game-city-menu-stat"><span>Focus</span><strong>${hero?.focus ?? 0}/${hero?.maxFocus ?? 0}</strong></div>
+        </div>
+        <div class="game-city-menu-actions">
+          <button class="btn btn--ghost game-city-menu-action" type="button" data-node-service="${service.id}">${service.cta}${service.cost !== null ? ` • ${service.cost}g` : ''}</button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="game-city-menu-detail-copy">${town.name} is a town-state hub with recovery, shopping and preparation loops hooked into the same hero progression schema.</div>
+    `;
+  }
+
+  renderNodeMenuSection(node, section) {
+    if (section === 'overview') {
+      const discovered = this.game.discoveredNodes.includes(node.id);
+      const cleared = this.game.clearedNodes.includes(node.id);
+      return `
+        <div class="game-node-menu-copy">${node.storySummaryUk || node.notes || 'A point of interest on the world route.'}</div>
+        <div class="game-node-menu-grid">
+          <div class="game-node-menu-stat"><span>Tier</span><strong>${node.tier}</strong></div>
+          <div class="game-node-menu-stat"><span>Danger</span><strong>${node.dangerLevel ?? node.tier}</strong></div>
+          <div class="game-node-menu-stat"><span>Visited</span><strong>${discovered ? 'Yes' : 'No'}</strong></div>
+          <div class="game-node-menu-stat"><span>Cleared</span><strong>${cleared ? 'Yes' : 'No'}</strong></div>
+        </div>
+      `;
+    }
+    if (section === 'services') {
+      const services = this.getNodeServiceEntries(node).map((service) => `
+        <div class="game-node-menu-row">
+          <div>
+            <strong>${service.labelUk}</strong>
+            <p>${service.effect}</p>
+          </div>
+          ${service.cta ? `<button class="btn btn--ghost game-node-menu-btn" type="button" data-node-service="${service.id}">${service.cta}${service.cost !== null ? ` • ${service.cost}g` : ''}</button>` : '<span class="game-node-menu-note">Info</span>'}
+        </div>
+      `).join('');
+      return `<div class="game-node-menu-list">${services}</div>`;
+    }
+    if (section === 'market') {
+      const stock = this.getTownStock(node).map((item) => `
+        <div class="game-node-menu-row">
+          <div>
+            <strong>${item.name}</strong>
+            <p>${item.type} • ${item.priceBuy}g</p>
+          </div>
+          <button class="btn btn--ghost game-node-menu-btn" type="button" data-node-shop-buy="${item.id}">Buy</button>
+        </div>
+      `).join('');
+      return `<div class="game-node-menu-list">${stock}</div>`;
+    }
+    if (section === 'contracts') {
+      const contracts = this.getNodeContracts(node).map((contract) => `
+        <div class="game-node-menu-row">
+          <div>
+            <strong>${contract.titleUk}</strong>
+            <p>${contract.objective}</p>
+          </div>
+          <button class="btn btn--ghost game-node-menu-btn" type="button" data-node-contract="${contract.id}">Take • ${contract.reward}</button>
+        </div>
+      `).join('');
+      return `<div class="game-node-menu-list">${contracts}</div>`;
+    }
+    if (section === 'sanctum') {
+      return `
+        <div class="game-node-menu-copy">Sanctums are wired as recovery and devotion nodes. Dedication restores HP and Focus but locks the blessing to one hero.</div>
+        <div class="game-node-menu-actions">
+          <button class="btn btn--ghost game-node-menu-btn" type="button" data-node-action="devote">Devote</button>
+        </div>
+      `;
+    }
+    if (section === 'expedition') {
+      const alreadyCleared = this.game.clearedNodes.includes(node.id);
+      return `
+        <div class="game-node-menu-copy">Expeditions now award XP, gold and loot directly into the new progression layer. Spending Focus makes the result stronger instead of just acting like mana.</div>
+        <div class="game-node-menu-actions">
+          <button class="btn btn--ghost game-node-menu-btn" type="button" data-node-action="expedition" ${alreadyCleared ? 'disabled' : ''}>Start Expedition</button>
+          <button class="btn btn--ghost game-node-menu-btn" type="button" data-node-action="expedition-focus" ${alreadyCleared ? 'disabled' : ''}>Spend 1 Focus</button>
+        </div>
+      `;
+    }
+    if (section === 'routes') {
+      const routes = (node.connectedTo || []).map((nodeId) => this.getNodeById(nodeId)).filter(Boolean).map((target) => `
+        <div class="game-node-menu-row">
+          <div>
+            <strong>${target.nameEn || target.id}</strong>
+            <p>${target.type} • tier ${target.tier}</p>
+          </div>
+          <button class="btn btn--ghost game-node-menu-btn" type="button" data-node-action="route" data-node-target="${target.id}">Pin Route</button>
+        </div>
+      `).join('');
+      return `<div class="game-node-menu-list">${routes}</div>`;
+    }
+    return `<div class="game-node-menu-copy">${node.notes || 'Nothing to report yet.'}</div>`;
+  }
+
+  renderPartyHud() {
+    this.dom.partyHud.innerHTML = this.game.party.map((hero, index) => {
+      const statTiles = [
+        { label: 'STR', value: hero.stats.str, mod: 'game-hero-stat--ruby' },
+        { label: 'VIT', value: hero.stats.vit, mod: 'game-hero-stat--steel' },
+        { label: 'AGI', value: hero.stats.agi, mod: 'game-hero-stat--jade' },
+        { label: 'INT', value: hero.stats.int, mod: 'game-hero-stat--violet' },
+        { label: 'WIL', value: hero.stats.wil, mod: 'game-hero-stat--steel' },
+        { label: 'LCK', value: hero.stats.luck, mod: 'game-hero-stat--jade' },
+      ].map((stat) => `
+        <div class="game-hero-stat ${stat.mod}">
+          <span>${stat.label}</span>
+          <strong>${stat.value}</strong>
+        </div>
+      `).join('');
+      const focusPips = Array.from({ length: hero.maxFocus }, (_, pipIndex) => `
+        <span class="game-hero-focus-pip ${pipIndex < hero.focus ? 'is-active' : ''}"></span>
+      `).join('');
+      return `
+        <button class="game-hero-card ${index === this.game.selectedHeroIndex ? 'is-selected' : ''}" type="button" data-hero-index="${index}">
+          <div class="game-hero-card-head">
+            <div class="game-hero-corner game-hero-corner--hp">
+              <span>LVL</span>
+              <strong>${hero.level}</strong>
+              <em>${hero.xpToNext ? `${hero.xp}/${hero.xpToNext}` : 'MAX'}</em>
+            </div>
+            <div class="game-hero-portrait">
+              <img src="${hero.views.front}" alt="${hero.name}" class="game-hero-portrait-head" onerror="this.style.visibility='hidden'">
+            </div>
+            <div class="game-hero-corner game-hero-corner--move">
+              <span>MOVE</span>
+              <strong>${hero.movePoints}</strong>
+              <em>/${hero.maxMovePoints}</em>
+            </div>
+          </div>
+          <div class="game-hero-focus-row">${focusPips}</div>
+          <div class="game-hero-name-wrap">
+            <div class="game-hero-name">${hero.name}</div>
+            <div class="game-hero-class">${hero.cls}</div>
+          </div>
+          <div class="game-hero-meta-row">
+            <span>HP ${hero.hp}/${hero.maxHp}</span>
+            <span>ARM ${hero.derived.armor}</span>
+            <span>INIT ${hero.derived.initiative}</span>
+          </div>
+          <div class="game-hero-stat-grid">${statTiles}</div>
+        </button>
+      `;
+    }).join('');
+
+    this.dom.partyStrip.innerHTML = this.game.party.map((hero, index) => `
+      <div class="game-party-chip ${index === this.game.selectedHeroIndex ? 'is-selected' : ''}">
+        <span class="game-party-chip-avatar">
+          <img src="${hero.views.front}" alt="${hero.name}" class="game-party-chip-avatar-img" onerror="this.style.visibility='hidden'">
+        </span>
+        <span class="game-party-chip-count">L${hero.level}</span>
+      </div>
+    `).join('');
+  }
+
+  updateHud(tile) {
+    if (tile) this.map.selected = tile;
+    const hero = this.getSelectedHero();
+    const selected = this.map.selected;
+    this.game.interfaceState = this.getInterfaceState();
+
+    if (!selected) {
+      this.dom.selectedInfo.textContent = hero?.tile ? this.getTileLabel(hero.tile) : 'No Hex';
+      this.dom.selectedMeta.textContent = hero
+        ? `${hero.name} | move ${hero.movePoints}/${hero.maxMovePoints} | XP ${hero.xp}/${hero.xpToNext || 'MAX'}`
+        : 'Select a hero';
+      this.dom.selectedLore.textContent = this.game.transientNotice || '';
+      this.dom.selectedTags.innerHTML = '';
+    } else {
+      const monsterPack = this.getMonsterPackAtTile(selected);
+      const move = selected.terrain === 'water'
+        ? 'Blocked'
+        : String(Math.max(1, TERRAIN[selected.terrain].move - (selected.road ? 1 : 0)));
+      const encounter = monsterPack
+        ? 100
+        : selected.town
+          ? 0
+          : selected.poi
+            ? 18
+            : selected.terrain === 'forest'
+              ? 18
+              : selected.terrain === 'mountain'
+                ? 24
+                : selected.terrain === 'wasteland'
+                  ? 16
+                  : selected.terrain === 'water'
+                    ? 0
+                    : 10;
+      const parts = [`${selected.q}, ${selected.r}`];
+      if (selected.terrain === 'water') parts.push('Water');
+      else parts.push(`Move ${move}`);
+      if (encounter > 0) parts.push(`${encounter}% risk`);
+      if (selected.road) parts.push('Road');
+      if (selected.town) parts.push('Town');
+      if (selected.poi) parts.push(selected.poi.label);
+      if (monsterPack) parts.push(`${monsterPack.members.length} monsters`);
+      this.dom.selectedInfo.textContent = this.getTileLabel(selected);
+      this.dom.selectedMeta.textContent = parts.join(' | ');
+
+      const node = selected.node || null;
+      const loreParts = [];
+      if (this.game.transientNotice) loreParts.push(this.game.transientNotice);
+      if (node?.storySummaryUk || node?.notes) loreParts.push(node.storySummaryUk || node.notes);
+      if (monsterPack) loreParts.push(this.getMonsterPackLore(monsterPack));
+      this.dom.selectedLore.textContent = loreParts.join(' | ');
+      this.dom.selectedTags.innerHTML = [...this.getNodeServiceLabels(node), ...this.getMonsterPackTags(monsterPack)]
+        .slice(0, 6)
+        .map((label) => `<span class="game-selected-tag">${label}</span>`)
+        .join('');
+      this.renderSelectedActions(hero, node);
+    }
+
+    if (!selected) {
+      this.renderSelectedActions(hero, null);
+    }
+
+    this.dom.locationTitle.textContent = hero?.tile ? `${hero.name} | ${this.getTileLabel(hero.tile)}` : this.game.location;
+    this.dom.stateValue.textContent = this.game.interfaceState;
+    this.updateClockHud();
+    this.renderMovePips();
+    this.updateActionButtons();
+    this.renderNodeMenu();
+    this.renderLevelUpPanel(hero);
+  }
+*/
 
 function mulberry32(seed) {
   return () => {
@@ -411,6 +1163,8 @@ export class WorldScene extends BaseScene {
     this.canvas = null;
     this.ctx = null;
     this.dom = {};
+    this.modalSystem = null;
+    this.modalConfirmAction = null;
     this.assets = { atlasImage: null, atlasMeta: null, heroPlaceholder: null, heroes: new Map(), monsters: new Map() };
     this.map = {
       tiles: [],
@@ -431,9 +1185,13 @@ export class WorldScene extends BaseScene {
       difficulty: 'adventurer',
       day: 1,
       gold: 26,
+      interfaceState: GAME_STATES.WORLD_MAP,
       maxMovePoints: 4,
       movePoints: 4,
       party: [],
+      discoveredNodes: [],
+      clearedNodes: [],
+      shopStockByNode: {},
       selectedHeroIndex: 0,
       location: 'Unknown',
       objective: 'Reach the first point of interest.',
@@ -493,14 +1251,15 @@ export class WorldScene extends BaseScene {
               <div class="game-banner-title" id="locationTitle">Preparing World</div>
               <div class="game-move-pips" id="movePips"></div>
             </div>
-            <div class="game-top-right">
-              <div class="game-counter-card"><span>Day</span><strong id="dayValue">1</strong></div>
-              <div class="game-counter-card game-counter-card--time"><span id="phaseValue">Day</span><strong id="timeValue">08:30</strong></div>
-              <div class="game-counter-card"><span>Gold</span><strong id="goldValue">26</strong></div>
-              <div class="game-top-actions">
-                <button id="endActionBtn" class="btn game-top-btn">End Turn</button>
-              </div>
+          <div class="game-top-right">
+            <div class="game-counter-card"><span>Day</span><strong id="dayValue">1</strong></div>
+            <div class="game-counter-card game-counter-card--time"><span id="phaseValue">Day</span><strong id="timeValue">08:30</strong></div>
+            <div class="game-counter-card"><span>Gold</span><strong id="goldValue">26</strong></div>
+            <div class="game-counter-card"><span>State</span><strong id="stateValue">WORLD_MAP</strong></div>
+            <div class="game-top-actions">
+              <button id="endActionBtn" class="btn game-top-btn">End Turn</button>
             </div>
+          </div>
           </div>
           <div class="game-selected-card">
             <div class="game-selected-kicker">Selected Hex</div>
@@ -508,17 +1267,42 @@ export class WorldScene extends BaseScene {
             <div class="game-selected-meta" id="selectedMeta">Click a land hex to move.</div>
             <div class="game-selected-lore" id="selectedLore"></div>
             <div class="game-selected-tags" id="selectedTags"></div>
-            <div class="game-selected-actions">
+            <div class="game-selected-actions" id="selectedActions">
               <button id="visitNodeBtn" class="btn btn--ghost game-selected-btn" type="button">Visit</button>
             </div>
           </div>
           <div class="game-node-menu" id="nodeMenu"></div>
           <div class="game-node-menu" id="cityMenu"></div>
+          <div class="game-levelup-panel" id="levelUpPanel"></div>
+          <div class="ftk-modal-root" id="townModalRoot" aria-hidden="true">
+            <div class="ftk-modal-backdrop" data-close-modal></div>
+            <div class="ftk-modal-layer">
+              <div class="ftk-modal" role="dialog" aria-modal="true" aria-labelledby="townModalTitle">
+                <div class="ftk-modal-header">
+                  <div class="ftk-modal-eyebrow" data-modal-eyebrow>Service</div>
+                  <div class="ftk-modal-title-row">
+                    <div>
+                      <h2 class="ftk-modal-title" id="townModalTitle" data-modal-title>Town Service</h2>
+                      <div class="ftk-modal-subtitle" data-modal-subtitle></div>
+                    </div>
+                    <button class="ftk-modal-close" type="button" data-close-modal aria-label="Close">×</button>
+                  </div>
+                </div>
+                <div class="ftk-modal-toolbar is-hidden" data-modal-toolbar></div>
+                <div class="ftk-modal-body" data-modal-body></div>
+                <div class="ftk-modal-footer">
+                  <div class="ftk-modal-footer-note" data-modal-footer-note></div>
+                  <div class="ftk-modal-btn-row" data-modal-footer-actions></div>
+                </div>
+              </div>
+            </div>
+          </div>
           <div class="game-party-panels" id="partyHud"></div>
         </div>
       </div>
     `;
     this.cacheDom();
+    this.initModalSystem();
     this.bindUI();
   }
 
@@ -533,18 +1317,36 @@ export class WorldScene extends BaseScene {
       timeValue: this.el.querySelector('#timeValue'),
       phaseValue: this.el.querySelector('#phaseValue'),
       goldValue: this.el.querySelector('#goldValue'),
+      stateValue: this.el.querySelector('#stateValue'),
       locationTitle: this.el.querySelector('#locationTitle'),
       selectedInfo: this.el.querySelector('#selectedInfo'),
       selectedMeta: this.el.querySelector('#selectedMeta'),
       selectedLore: this.el.querySelector('#selectedLore'),
       selectedTags: this.el.querySelector('#selectedTags'),
+      selectedActions: this.el.querySelector('#selectedActions'),
       visitNodeBtn: this.el.querySelector('#visitNodeBtn'),
       nodeMenu: this.el.querySelector('#nodeMenu'),
       cityMenu: this.el.querySelector('#cityMenu'),
+      levelUpPanel: this.el.querySelector('#levelUpPanel'),
+      townModalRoot: this.el.querySelector('#townModalRoot'),
       movePips: this.el.querySelector('#movePips'),
       partyHud: this.el.querySelector('#partyHud'),
       partyStrip: this.el.querySelector('#partyStrip'),
     };
+  }
+
+  initModalSystem() {
+    this.modalSystem = new ModalSystem({
+      root: this.dom.townModalRoot,
+      onOpen: (modalId) => {
+        this.game.interfaceState = this.mapModalIdToState(modalId);
+        this.syncStore();
+      },
+      onClose: () => {
+        this.modalConfirmAction = null;
+        this.updateHud(this.map.selected);
+      },
+    });
   }
 
   bindUI() {
@@ -554,14 +1356,21 @@ export class WorldScene extends BaseScene {
     });
     this.dom.endActionBtn.addEventListener('click', () => this.handleEndAction());
     this.dom.visitNodeBtn.addEventListener('click', () => this.openNodeMenu());
+    this.dom.selectedActions.addEventListener('click', (event) => {
+      const consumeButton = event.target.closest('[data-quick-consume]');
+      if (!consumeButton) return;
+      this.consumeSelectedHeroItem(consumeButton.dataset.quickConsume);
+    });
     this.dom.nodeMenu.addEventListener('click', (event) => this.handleNodeMenuClick(event));
     this.dom.cityMenu.addEventListener('click', (event) => this.handleNodeMenuClick(event));
+    this.dom.levelUpPanel.addEventListener('click', (event) => this.handleLevelUpPanelClick(event));
     this.dom.partyHud.addEventListener('click', (event) => {
       if (this.game.moving) return;
       const card = event.target.closest('[data-hero-index]');
       if (!card) return;
       const heroIndex = Number(card.dataset.heroIndex);
-      if (heroIndex !== this.game.selectedHeroIndex) return;
+      if (!Number.isFinite(heroIndex)) return;
+      this.game.selectedHeroIndex = heroIndex;
       this.game.pathPreview = [];
       this.syncSelectionContext();
       this.renderPartyHud();
@@ -604,6 +1413,10 @@ export class WorldScene extends BaseScene {
     this.game.difficulty = runtime.difficulty || 'adventurer';
     this.game.day = Number.isFinite(runtime.day) ? runtime.day : 1;
     this.game.gold = Number.isFinite(runtime.gold) ? runtime.gold : 26;
+    this.game.interfaceState = runtime.interfaceState || GAME_STATES.WORLD_MAP;
+    this.game.discoveredNodes = Array.isArray(runtime.discoveredNodes) ? [...runtime.discoveredNodes] : [];
+    this.game.clearedNodes = Array.isArray(runtime.clearedNodes) ? [...runtime.clearedNodes] : [];
+    this.game.shopStockByNode = structuredClone(runtime.shopStockByNode || {});
     this.game.maxMovePoints = MOVE_LIMIT_MAX;
     this.game.movePoints = 0;
     this.game.selectedHeroIndex = 0;
@@ -645,45 +1458,27 @@ export class WorldScene extends BaseScene {
     this.game.party = sourceParty.slice(0, 4).map((entry, index) => {
       const source = heroesData.find((hero) => hero.id === (entry.heroId || entry.id));
       const views = entry.views || source?.views || heroFallbackViews(entry.heroId || source?.id, source?.sprite || entry.sprite);
-      return {
-        id: entry.heroId || entry.id || source?.id || `hero-${index}`,
+      const hero = createRuntimeHero({
+        ...entry,
+        heroId: entry.heroId || entry.id || source?.id || `hero-${index}`,
         name: entry.name || source?.nameEn || `Hero ${index + 1}`,
         cls: entry.cls || source?.class || 'Adventurer',
         classKey: entry.classKey || source?.classKey || null,
         playerLabel: entry.playerLabel || `P${index + 1}`,
         playerColor: entry.playerColor || ['#4e8fe0', '#b058d9', '#7c7cff', '#53c2a1'][index] || '#6d7f8a',
-        hp: source?.hp || entry.hp || entry.stats?.[0] || 30,
-        maxHp: source?.hp || entry.hp || entry.stats?.[0] || 30,
-        focus: source?.focus ?? entry.focus ?? 3,
-        maxFocus: source?.focus ?? entry.focus ?? 3,
-        movePoints: 0,
-        maxMovePoints: MOVE_LIMIT_MIN,
-        stepsTaken: 0,
-        turnRolled: false,
-        turnEnded: false,
-        lastRollTotal: 0,
-        lastRollTrail: [],
-        tile: null,
-        stats: {
-          str: source?.str ?? entry.stats?.[1] ?? 5,
-          vit: source?.vit ?? entry.stats?.[2] ?? 5,
-          agi: source?.agi ?? entry.stats?.[3] ?? 5,
-          int: source?.int ?? 5,
-          tal: source?.tal ?? 5,
-          speed: source?.speed ?? 5,
-        },
         summary: entry.summary || (source?.summaryUk || source?.summaryEn
           ? { uk: source?.summaryUk || '', en: source?.summaryEn || '' }
           : null),
         skills: entry.skills || source?.skills || [],
         portrait: entry.portrait || source?.portrait || views.front,
         views,
-        render: HERO_RENDER[entry.heroId || entry.id] || HERO_RENDER.default,
         pipeLevel: Math.max(1, entry.pipeLevel || 1),
         curses: Array.isArray(entry.curses) ? [...entry.curses] : [],
         devotion: entry.devotion || null,
         devotionName: entry.devotionName || null,
-      };
+      }, index);
+      hero.render = HERO_RENDER[entry.heroId || entry.id] || HERO_RENDER.default;
+      return hero;
     });
 
     this.game.party.forEach((hero) => {
@@ -1876,30 +2671,19 @@ export class WorldScene extends BaseScene {
 
   syncStore() {
     this.store.update((state) => {
+      state.app.gameState = this.game.interfaceState || GAME_STATES.WORLD_MAP;
       state.world.seed = this.game.seed;
       state.world.difficulty = this.game.difficulty;
       state.world.day = this.game.day;
       state.world.gold = this.game.gold;
       state.world.timeCycleSeconds = this.game.timeCycleSeconds;
       state.world.timeOfDayMinutes = this.game.timeOfDayMinutes;
+      state.world.interfaceState = this.game.interfaceState || GAME_STATES.WORLD_MAP;
+      state.world.discoveredNodes = [...this.game.discoveredNodes];
+      state.world.clearedNodes = [...this.game.clearedNodes];
+      state.world.shopStockByNode = structuredClone(this.game.shopStockByNode);
       state.world.activeContract = this.game.activeContract ? structuredClone(this.game.activeContract) : null;
-      state.world.party = structuredClone(this.game.party.map((hero) => ({
-        heroId: hero.id,
-        name: hero.name,
-        cls: hero.cls,
-        classKey: hero.classKey,
-        summary: hero.summary,
-        skills: hero.skills,
-        playerLabel: hero.playerLabel,
-        playerColor: hero.playerColor,
-        focus: hero.focus,
-        portrait: hero.portrait,
-        views: hero.views,
-        pipeLevel: hero.pipeLevel || 1,
-        curses: Array.isArray(hero.curses) ? [...hero.curses] : [],
-        devotion: hero.devotion || null,
-        devotionName: hero.devotionName || null,
-      })));
+      state.world.party = structuredClone(this.game.party.map((hero) => serializeHero(hero)));
       return state;
     });
   }
@@ -1961,6 +2745,7 @@ export class WorldScene extends BaseScene {
       this.game.activePath = [];
     }
     this.syncSelectionContext();
+    this.handleHeroArrival(hero, reached);
     this.syncStore();
     if (!this.camera.userAdjusted) this.fitMapToView();
     this.renderPartyHud();
@@ -2712,6 +3497,614 @@ export class WorldScene extends BaseScene {
     this.renderNodeMenu();
   }
 
+  mapModalIdToState(modalId) {
+    const states = {
+      shop: GAME_STATES.SHOP,
+      inn: GAME_STATES.INN,
+      quests: GAME_STATES.QUEST_BOARD,
+      blacksmith: GAME_STATES.BLACKSMITH,
+      info: GAME_STATES.EVENT,
+      confirm: GAME_STATES.EVENT,
+    };
+    return states[modalId] || GAME_STATES.TOWN;
+  }
+
+  getWorldInterfaceState() {
+    if (this.modalSystem?.isOpen()) {
+      return this.mapModalIdToState(this.modalSystem.getActiveModalId());
+    }
+    if (this.game.moving) return GAME_STATES.MOVEMENT;
+    if (this.game.nodeMenu.open) {
+      const node = this.getNodeById(this.game.nodeMenu.nodeId);
+      if (this.isCityNode(node)) return GAME_STATES.TOWN;
+      if (this.game.nodeMenu.section === 'contracts') return GAME_STATES.QUEST_BOARD;
+      return GAME_STATES.EVENT;
+    }
+    return GAME_STATES.WORLD_MAP;
+  }
+
+  refreshSceneUI() {
+    this.syncStore();
+    this.renderPartyHud();
+    this.updateHud(this.map.selected);
+    this.draw();
+    this.refreshTownModal();
+  }
+
+  refreshTownModal() {
+    if (!this.modalSystem?.isOpen()) return;
+    const node = this.getNodeById(this.game.nodeMenu.nodeId) || this.getCurrentNode();
+    if (!node) return;
+    this.modalSystem.setConfigs(this.getTownModalConfigs(node));
+    this.modalSystem.render();
+  }
+
+  getItemRef(item) {
+    return item?.instanceId || item?.id || '';
+  }
+
+  getItemModalIcon(item) {
+    if (!item) return '✦';
+    if (item.tags?.includes('sword')) return '⚔';
+    if (item.tags?.includes('bow')) return '🏹';
+    if (item.tags?.includes('staff')) return '✦';
+    if (item.type === 'armor') return '🛡';
+    if (item.tags?.includes('heal')) return '🧪';
+    if (item.tags?.includes('focus')) return '◆';
+    if (item.tags?.includes('cleanse')) return '☘';
+    return '✦';
+  }
+
+  renderModalRowCard(item, asideHtml = '', extraHtml = '') {
+    return `
+      <div class="ftk-modal-row">
+        <div class="ftk-modal-row-icon">${item.icon || this.getItemModalIcon(item)}</div>
+        <div>
+          <div class="ftk-modal-row-title">${item.name}</div>
+          <div class="ftk-modal-row-desc">${item.desc || item.note || ''}</div>
+          ${extraHtml}
+        </div>
+        <div class="ftk-modal-row-aside">${asideHtml}</div>
+      </div>
+    `;
+  }
+
+  renderModalCompareTags(hero, item) {
+    if (!hero || !item) return '';
+    if (item.type === 'consumable') {
+      const tags = (item.effects || []).map((effect) => {
+        if (effect.type === 'heal') return `<span class="ftk-modal-tag">Heal ${effect.amount}</span>`;
+        if (effect.type === 'focus') return `<span class="ftk-modal-tag">Focus +${effect.amount}</span>`;
+        if (effect.type === 'cleanse') return '<span class="ftk-modal-tag">Cleanse</span>';
+        return '';
+      }).join('');
+      return tags ? `<div class="ftk-modal-tag-grid">${tags}</div>` : '';
+    }
+
+    const current = hero.equipment?.[item.slot] || null;
+    const keys = new Set([
+      ...Object.keys(current?.stats || {}),
+      ...Object.keys(item.stats || {}),
+    ]);
+    const tags = [...keys].map((key) => {
+      const next = item.stats?.[key] || 0;
+      const prev = current?.stats?.[key] || 0;
+      if (next === prev) return '';
+      const delta = next - prev;
+      const mod = delta > 0 ? 'ftk-delta--up' : 'ftk-delta--down';
+      const sign = delta > 0 ? '+' : '';
+      return `<span class="ftk-modal-tag ${mod}">${key} ${sign}${delta}</span>`;
+    }).join('');
+    return tags ? `<div class="ftk-modal-tag-grid">${tags}</div>` : '';
+  }
+
+  ensureTownStock(node) {
+    if (!node) return [];
+    if (!this.game.shopStockByNode[node.id]) {
+      const town = getTownDefinition(node);
+      const averageLevel = Math.max(1, Math.round(this.game.party.reduce((sum, hero) => sum + hero.level, 0) / Math.max(1, this.game.party.length)));
+      const stock = [];
+      const baseConsumables = ['field_bandage_01', 'focus_tonic_01', 'antidote_01']
+        .map((itemId) => getItemById(itemId))
+        .filter(Boolean);
+      const gearPool = ['iron_sword_01', 'hunter_bow_01', 'ash_staff_01', 'quilted_armor_01', 'chain_vest_01', 'mystic_robe_01']
+        .map((itemId) => getItemById(itemId))
+        .filter((item) => item && item.levelRequirement <= averageLevel + town.shopQuality - 1)
+        .filter((item) => !item.classRestriction?.length || this.game.party.some((hero) => item.classRestriction.includes(hero.classKey)));
+      stock.push(...baseConsumables);
+      stock.push(...gearPool);
+      this.game.shopStockByNode[node.id] = stock.slice(0, town.shopQuality >= 2 ? 7 : 5);
+    }
+    return this.game.shopStockByNode[node.id];
+  }
+
+  getTownStock(node) {
+    return this.ensureTownStock(node);
+  }
+
+  getStockBuckets(node) {
+    const stock = this.getTownStock(node);
+    return {
+      weapons: stock.filter((item) => item.type === 'weapon'),
+      armor: stock.filter((item) => item.type === 'armor'),
+      consumables: stock.filter((item) => item.type === 'consumable'),
+    };
+  }
+
+  buyTownItem(itemRef) {
+    const hero = this.getSelectedHero();
+    const node = this.getNodeById(this.game.nodeMenu.nodeId);
+    const stock = this.getTownStock(node);
+    const index = stock.findIndex((item) => this.getItemRef(item) === itemRef || item.id === itemRef);
+    if (!hero || !node || index === -1) return false;
+    const item = stock[index];
+    if (this.game.gold < item.priceBuy) {
+      this.openInfoModal('Not enough gold', `You need ${item.priceBuy} gold for ${item.name}.`);
+      return false;
+    }
+    if (hero.inventory.length >= 12) {
+      this.openInfoModal('Inventory full', `${hero.name} cannot carry more items right now.`);
+      return false;
+    }
+    this.game.gold -= item.priceBuy;
+    const [purchased] = stock.splice(index, 1);
+    addItemToInventory(hero, purchased);
+    this.setNodeMenuNotice(`${hero.name} bought ${item.name}.`);
+    this.refreshSceneUI();
+    return true;
+  }
+
+  sellTownItem(itemRef) {
+    const hero = this.getSelectedHero();
+    if (!hero) return false;
+    const value = sellInventoryItem(hero, itemRef);
+    if (!value) return false;
+    this.game.gold += value;
+    this.setNodeMenuNotice(`${hero.name} sold gear for ${value}g.`);
+    this.refreshSceneUI();
+    return true;
+  }
+
+  equipTownItem(itemRef) {
+    const hero = this.getSelectedHero();
+    if (!hero) return false;
+    const result = equipInventoryItem(hero, itemRef);
+    if (!result.ok) {
+      this.openInfoModal('Cannot equip', result.reason === 'restricted'
+        ? `${hero.name} does not meet the class or level requirement.`
+        : 'This item is not available to equip.');
+      return false;
+    }
+    this.setNodeMenuNotice(`${hero.name} equipped ${result.item.name}.`);
+    this.refreshSceneUI();
+    return true;
+  }
+
+  getInnOptions(node) {
+    const town = getTownDefinition(node);
+    const baseCost = Math.round((6 + node.tier * 2) * town.restCostMultiplier);
+    return [
+      { id: 'cheap', icon: '🛏', name: 'Cheap Room', desc: '40% HP, no Focus', price: Math.max(3, baseCost - 2), healRatio: 0.4, focus: 0, cleanse: false },
+      { id: 'standard', icon: '🍲', name: 'Standard Rest', desc: 'Full HP, +1 Focus', price: baseCost, healRatio: 1, focus: 1, cleanse: false },
+      { id: 'luxury', icon: '🕯', name: 'Luxury Room', desc: 'Full HP, full Focus, cleanse', price: baseCost + 5, healRatio: 1, focus: 99, cleanse: true },
+    ];
+  }
+
+  useInnRoom(roomId) {
+    const hero = this.getSelectedHero();
+    const node = this.getNodeById(this.game.nodeMenu.nodeId);
+    const room = this.getInnOptions(node).find((entry) => entry.id === roomId);
+    if (!hero || !node || !room) return false;
+    if (this.game.gold < room.price) {
+      this.openInfoModal('Not enough gold', `${room.name} costs ${room.price} gold.`);
+      return false;
+    }
+    this.game.gold -= room.price;
+    hero.hp = Math.min(hero.maxHp, room.healRatio >= 1 ? hero.maxHp : Math.ceil(hero.maxHp * room.healRatio));
+    hero.focus = Math.min(hero.maxFocus, room.focus >= 99 ? hero.maxFocus : hero.focus + room.focus);
+    if (room.cleanse) {
+      hero.curses = [];
+      hero.statusEffects = [];
+      hero.poisoned = false;
+    }
+    hero.movePoints = 0;
+    hero.turnEnded = true;
+    this.closeNodeMenu();
+    this.advanceHeroTurn();
+    this.setNodeMenuNotice(`${hero.name} rested in the inn.`);
+    this.refreshSceneUI();
+    this.modalSystem?.close();
+    return true;
+  }
+
+  getTownSmithOffers(hero = this.getSelectedHero()) {
+    const offers = [];
+    if (hero?.equipment?.weapon) {
+      offers.push({
+        id: 'temper_weapon',
+        icon: '🔨',
+        name: 'Temper Weapon',
+        desc: `${hero.equipment.weapon.name}: +1 weapon damage`,
+        price: 90 + hero.level * 8,
+      });
+    }
+    if (hero?.equipment?.armor) {
+      offers.push({
+        id: 'reinforce_armor',
+        icon: '🛡',
+        name: 'Reinforce Armor',
+        desc: `${hero.equipment.armor.name}: +1 armor, +4 HP`,
+        price: 78 + hero.level * 7,
+      });
+    }
+    if (hero) {
+      offers.push({
+        id: 'focus_inlay',
+        icon: '✶',
+        name: 'Focus Inlay',
+        desc: 'Add +1 Focus max to equipped gear',
+        price: 124 + hero.level * 10,
+      });
+    }
+    return offers;
+  }
+
+  applySmithOffer(offerId) {
+    const hero = this.getSelectedHero();
+    const offer = this.getTownSmithOffers(hero).find((entry) => entry.id === offerId);
+    if (!hero || !offer) return false;
+    if (this.game.gold < offer.price) {
+      this.openInfoModal('Not enough gold', `${offer.name} costs ${offer.price} gold.`);
+      return false;
+    }
+    this.game.gold -= offer.price;
+    if (offerId === 'temper_weapon' && hero.equipment.weapon) {
+      hero.equipment.weapon.stats = {
+        ...(hero.equipment.weapon.stats || {}),
+        weaponDamage: (hero.equipment.weapon.stats?.weaponDamage || 0) + 1,
+      };
+      hero.equipment.weapon.upgradeTier = (hero.equipment.weapon.upgradeTier || 0) + 1;
+    }
+    if (offerId === 'reinforce_armor' && hero.equipment.armor) {
+      hero.equipment.armor.stats = {
+        ...(hero.equipment.armor.stats || {}),
+        armor: (hero.equipment.armor.stats?.armor || 0) + 1,
+        hpMax: (hero.equipment.armor.stats?.hpMax || 0) + 4,
+      };
+      hero.equipment.armor.upgradeTier = (hero.equipment.armor.upgradeTier || 0) + 1;
+    }
+    if (offerId === 'focus_inlay') {
+      const target = hero.equipment.weapon || hero.equipment.armor;
+      if (target) {
+        target.stats = {
+          ...(target.stats || {}),
+          focusMax: Math.min(2, (target.stats?.focusMax || 0) + 1),
+        };
+        target.upgradeTier = (target.upgradeTier || 0) + 1;
+      } else {
+        hero.baseStats.wil += 1;
+      }
+    }
+    recalculateHero(hero);
+    this.setNodeMenuNotice(`${offer.name} applied to ${hero.name}.`);
+    this.refreshSceneUI();
+    return true;
+  }
+
+  openInfoModal(title, text, eyebrow = 'Info') {
+    const node = this.getNodeById(this.game.nodeMenu.nodeId) || this.getCurrentNode();
+    if (!node) return;
+    const sourceModalId = this.modalSystem?.getActiveModalId();
+    const sourceTabId = this.modalSystem?.getActiveTabId();
+    const canReturn = sourceModalId && !['info', 'confirm'].includes(sourceModalId);
+    const reopenSource = () => {
+      if (!canReturn) return;
+      this.modalSystem.setConfigs(this.getTownModalConfigs(node));
+      this.modalSystem.open(sourceModalId, sourceTabId ? { defaultTab: sourceTabId } : {});
+    };
+    this.modalSystem.setConfigs(this.getTownModalConfigs(node));
+    this.modalSystem.open('info', {
+      eyebrow,
+      title,
+      subtitle: '',
+      footerNote: 'Service notice',
+      footerActions: [
+        ...(canReturn ? [{ label: 'Back', variant: 'ghost', onClick: () => reopenSource() }] : []),
+        { label: 'Close', variant: 'primary', close: true },
+      ],
+      renderBody: () => `<div class="ftk-modal-panel"><div class="ftk-modal-panel-body"><div class="ftk-modal-empty" style="text-align:left">${text}</div></div></div>`,
+    });
+  }
+
+  openConfirmModal({ title, text, confirmLabel = 'Confirm', onConfirm }) {
+    const node = this.getNodeById(this.game.nodeMenu.nodeId) || this.getCurrentNode();
+    if (!node) return;
+    const sourceModalId = this.modalSystem?.getActiveModalId();
+    const sourceTabId = this.modalSystem?.getActiveTabId();
+    const canReturn = sourceModalId && !['info', 'confirm'].includes(sourceModalId);
+    const reopenSource = () => {
+      if (!canReturn) return;
+      this.modalSystem.setConfigs(this.getTownModalConfigs(node));
+      this.modalSystem.open(sourceModalId, sourceTabId ? { defaultTab: sourceTabId } : {});
+    };
+    this.modalConfirmAction = onConfirm;
+    this.modalSystem.setConfigs(this.getTownModalConfigs(node));
+    this.modalSystem.open('confirm', {
+      title,
+      subtitle: '',
+      footerActions: [
+        canReturn
+          ? { label: 'Back', variant: 'ghost', onClick: () => reopenSource() }
+          : { label: 'Cancel', variant: 'ghost', close: true },
+        {
+          label: confirmLabel,
+          variant: 'primary',
+          onClick: () => {
+            const result = typeof this.modalConfirmAction === 'function'
+              ? this.modalConfirmAction()
+              : true;
+            this.modalConfirmAction = null;
+            if (result === false) return;
+            if (canReturn) {
+              reopenSource();
+              return;
+            }
+            this.modalSystem.close();
+          },
+        },
+      ],
+      renderBody: () => `<div class="ftk-modal-panel"><div class="ftk-modal-panel-body"><div class="ftk-modal-empty" style="text-align:left">${text}</div></div></div>`,
+    });
+  }
+
+  getTownModalConfigs(node) {
+    const hero = this.getSelectedHero();
+    const stockBuckets = this.getStockBuckets(node);
+    const smithOffers = this.getTownSmithOffers(hero);
+    return {
+      shop: {
+        eyebrow: 'Trade',
+        title: node.nameEn || 'Town Shop',
+        subtitle: 'Buy, equip and sell gear in a dedicated fantasy modal instead of the narrow sidebar panel.',
+        tabs: [
+          { id: 'weapons', label: 'Weapons' },
+          { id: 'armor', label: 'Armor' },
+          { id: 'consumables', label: 'Consumables' },
+        ],
+        defaultTab: 'weapons',
+        footerNote: 'Stock is driven by town tier and current party level.',
+        footerActions: [
+          { label: 'Close', variant: 'primary', close: true },
+        ],
+        renderBody: (tabId) => {
+          const items = stockBuckets[tabId] || [];
+          const inventory = hero?.inventory || [];
+          const currentWeapon = hero?.equipment?.weapon;
+          const currentArmor = hero?.equipment?.armor;
+          const compare = currentWeapon || currentArmor;
+          return `
+            <div class="ftk-modal-two-col">
+              <div class="ftk-modal-panel">
+                <div class="ftk-modal-panel-head">
+                  <div>
+                    <div class="ftk-modal-panel-title">Stock</div>
+                    <div class="ftk-modal-panel-sub">${tabId || 'weapons'} • Gold ${this.game.gold}</div>
+                  </div>
+                  <div class="ftk-modal-tag">Hero ${hero?.name || '—'}</div>
+                </div>
+                <div class="ftk-modal-panel-body">
+                  ${items.map((item) => this.renderModalRowCard(
+                    { ...item, desc: `${item.rarity} • lvl ${item.levelRequirement}${item.classRestriction?.length ? ` • ${item.classRestriction.join(', ')}` : ''}` },
+                    `<div class="ftk-modal-tag">${item.priceBuy}g</div><button class="ftk-modal-btn ftk-modal-btn--primary" type="button" data-modal-action="buy-item" data-item-ref="${this.getItemRef(item)}">Buy</button>`,
+                    this.renderModalCompareTags(hero, item),
+                  )).join('') || '<div class="ftk-modal-empty">No stock in this category.</div>'}
+                </div>
+              </div>
+              <div class="ftk-modal-panel">
+                <div class="ftk-modal-panel-head">
+                  <div>
+                    <div class="ftk-modal-panel-title">Loadout</div>
+                    <div class="ftk-modal-panel-sub">Current equipped items and inventory</div>
+                  </div>
+                </div>
+                <div class="ftk-modal-panel-body">
+                  <div class="ftk-modal-stat-grid">
+                    <div class="ftk-modal-stat-box"><div class="ftk-modal-stat-label">Damage</div><div class="ftk-modal-stat-value">${hero?.derived?.physicalDamage ?? 0}</div></div>
+                    <div class="ftk-modal-stat-box"><div class="ftk-modal-stat-label">Armor</div><div class="ftk-modal-stat-value">${hero?.derived?.armor ?? 0}</div></div>
+                    <div class="ftk-modal-stat-box"><div class="ftk-modal-stat-label">Focus</div><div class="ftk-modal-stat-value">${hero?.focus ?? 0}/${hero?.maxFocus ?? 0}</div></div>
+                    <div class="ftk-modal-stat-box"><div class="ftk-modal-stat-label">Equipped</div><div class="ftk-modal-stat-value">${compare?.name || 'None'}</div></div>
+                  </div>
+                  ${(inventory.length ? inventory : []).map((item) => this.renderModalRowCard(
+                    { ...item, desc: `${item.type} • sell ${item.priceSell || Math.max(1, Math.round((item.priceBuy || 0) * 0.45))}g` },
+                    item.type === 'consumable'
+                      ? `<button class="ftk-modal-btn ftk-modal-btn--ghost" type="button" data-modal-action="use-item" data-item-ref="${this.getItemRef(item)}">Use</button><button class="ftk-modal-btn ftk-modal-btn--ghost" type="button" data-modal-action="sell-item" data-item-ref="${this.getItemRef(item)}">Sell</button>`
+                      : `<button class="ftk-modal-btn ftk-modal-btn--ghost" type="button" data-modal-action="equip-item" data-item-ref="${this.getItemRef(item)}">Equip</button><button class="ftk-modal-btn ftk-modal-btn--ghost" type="button" data-modal-action="sell-item" data-item-ref="${this.getItemRef(item)}">Sell</button>`,
+                    this.renderModalCompareTags(hero, item),
+                  )).join('') || '<div class="ftk-modal-empty">Inventory is empty.</div>'}
+                </div>
+              </div>
+            </div>
+          `;
+        },
+        onBodyAction: (dataset) => {
+          if (dataset.modalAction === 'buy-item') {
+            const stockItem = this.getTownStock(node).find((item) => this.getItemRef(item) === dataset.itemRef);
+            if (!stockItem) return;
+            this.openConfirmModal({
+              title: 'Confirm purchase',
+              text: `Buy ${stockItem.name} for ${stockItem.priceBuy} gold?`,
+              confirmLabel: 'Buy',
+              onConfirm: () => this.buyTownItem(dataset.itemRef),
+            });
+          }
+          if (dataset.modalAction === 'sell-item') {
+            this.sellTownItem(dataset.itemRef);
+          }
+          if (dataset.modalAction === 'equip-item') {
+            this.equipTownItem(dataset.itemRef);
+          }
+          if (dataset.modalAction === 'use-item') {
+            const result = useConsumable(hero, dataset.itemRef);
+            if (!result.ok) return;
+            this.setNodeMenuNotice(`${hero.name}: ${result.message}`);
+            this.refreshSceneUI();
+          }
+        },
+      },
+      inn: {
+        eyebrow: 'Rest',
+        title: `${node.nameEn || 'Town'} Inn`,
+        subtitle: 'Recover HP, restore Focus and stabilize the party between expeditions.',
+        footerNote: 'Luxury rest clears negative expedition states in this MVP.',
+        footerActions: [
+          ...(node.services?.includes('healer') || this.isCityNode(node)
+            ? [{ label: 'Healer', variant: 'ghost', onClick: () => this.useNodeService('healer') }]
+            : []),
+          ...(this.isCityNode(node)
+            ? [{ label: 'Meditate', variant: 'ghost', onClick: () => this.useNodeService('meditation') }]
+            : []),
+          { label: 'Close', variant: 'primary', close: true },
+        ],
+        renderBody: () => `
+          <div class="ftk-modal-panel">
+            <div class="ftk-modal-panel-head">
+              <div>
+                <div class="ftk-modal-panel-title">Inn Services</div>
+                <div class="ftk-modal-panel-sub">${hero?.name || 'Hero'} • HP ${hero?.hp ?? 0}/${hero?.maxHp ?? 0} • Focus ${hero?.focus ?? 0}/${hero?.maxFocus ?? 0}</div>
+              </div>
+            </div>
+            <div class="ftk-modal-panel-body">
+              ${this.getInnOptions(node).map((room) => this.renderModalRowCard(
+                room,
+                `<div class="ftk-modal-tag">${room.price}g</div><button class="ftk-modal-btn ftk-modal-btn--primary" type="button" data-modal-action="buy-room" data-room-id="${room.id}">Choose</button>`,
+              )).join('')}
+            </div>
+          </div>
+        `,
+        onBodyAction: (dataset) => {
+          if (dataset.modalAction === 'buy-room') {
+            this.useInnRoom(dataset.roomId);
+          }
+        },
+      },
+      quests: {
+        eyebrow: 'Contracts',
+        title: `${node.nameEn || 'Town'} Board`,
+        subtitle: 'Regional contracts tied into the current route and objective loop.',
+        footerNote: this.game.activeContract ? `Active contract: ${this.game.activeContract.titleUk}` : 'Only one active contract is tracked at a time.',
+        footerActions: [
+          { label: 'Close', variant: 'primary', close: true },
+        ],
+        renderBody: () => `
+          <div class="ftk-modal-panel">
+            <div class="ftk-modal-panel-head">
+              <div>
+                <div class="ftk-modal-panel-title">Available Quests</div>
+                <div class="ftk-modal-panel-sub">${node.nameEn || node.id}</div>
+              </div>
+            </div>
+            <div class="ftk-modal-panel-body">
+              ${this.getNodeContracts(node).map((contract) => this.renderModalRowCard(
+                { icon: contract.type === 'Bounty' ? '☠' : contract.type === 'Delivery' ? '✉' : contract.type === 'Retrieval' ? '✶' : '⛶', name: contract.titleUk, desc: contract.objective },
+                `<div class="ftk-modal-tag">${contract.reward}</div><button class="ftk-modal-btn ftk-modal-btn--primary" type="button" data-modal-action="take-contract" data-contract-id="${contract.id}">Take</button>`,
+              )).join('') || '<div class="ftk-modal-empty">No quests available here.</div>'}
+            </div>
+          </div>
+        `,
+        onBodyAction: (dataset) => {
+          if (dataset.modalAction === 'take-contract') {
+            this.acceptNodeContract(dataset.contractId);
+            this.modalSystem.close();
+          }
+        },
+      },
+      blacksmith: {
+        eyebrow: 'Forge',
+        title: `${node.nameEn || 'Town'} Blacksmith`,
+        subtitle: 'Upgrade the currently equipped gear or invest in better Focus sustain.',
+        footerNote: 'Blacksmith upgrades now persist because items are stored as full runtime objects.',
+        footerActions: [
+          { label: 'Close', variant: 'primary', close: true },
+        ],
+        renderBody: () => `
+          <div class="ftk-modal-two-col">
+            <div class="ftk-modal-panel">
+              <div class="ftk-modal-panel-head">
+                <div>
+                  <div class="ftk-modal-panel-title">Forge Services</div>
+                  <div class="ftk-modal-panel-sub">${hero?.name || 'Hero'} • Gold ${this.game.gold}</div>
+                </div>
+              </div>
+              <div class="ftk-modal-panel-body">
+                ${smithOffers.map((offer) => this.renderModalRowCard(
+                  offer,
+                  `<div class="ftk-modal-tag">${offer.price}g</div><button class="ftk-modal-btn ftk-modal-btn--primary" type="button" data-modal-action="smith-upgrade" data-offer-id="${offer.id}">Upgrade</button>`,
+                )).join('') || '<div class="ftk-modal-empty">No equipped gear is available for upgrades.</div>'}
+              </div>
+            </div>
+            <div class="ftk-modal-panel">
+              <div class="ftk-modal-panel-head">
+                <div>
+                  <div class="ftk-modal-panel-title">Current Gear</div>
+                  <div class="ftk-modal-panel-sub">Preview of the selected hero loadout</div>
+                </div>
+              </div>
+              <div class="ftk-modal-panel-body">
+                <div class="ftk-modal-stat-grid">
+                  <div class="ftk-modal-stat-box"><div class="ftk-modal-stat-label">Weapon</div><div class="ftk-modal-stat-value">${hero?.equipment?.weapon?.name || 'None'}</div></div>
+                  <div class="ftk-modal-stat-box"><div class="ftk-modal-stat-label">Armor</div><div class="ftk-modal-stat-value">${hero?.equipment?.armor?.name || 'None'}</div></div>
+                  <div class="ftk-modal-stat-box"><div class="ftk-modal-stat-label">Damage</div><div class="ftk-modal-stat-value">${hero?.derived?.physicalDamage ?? 0}</div></div>
+                  <div class="ftk-modal-stat-box"><div class="ftk-modal-stat-label">Armor</div><div class="ftk-modal-stat-value">${hero?.derived?.armor ?? 0}</div></div>
+                </div>
+                <div class="ftk-modal-empty">Use the forge to push one favorite item a little further, not to replace the whole loot curve.</div>
+              </div>
+            </div>
+          </div>
+        `,
+        onBodyAction: (dataset) => {
+          if (dataset.modalAction === 'smith-upgrade') {
+            const offer = smithOffers.find((entry) => entry.id === dataset.offerId);
+            if (!offer) return;
+            this.openConfirmModal({
+              title: 'Confirm upgrade',
+              text: `${offer.name} for ${offer.price} gold?`,
+              confirmLabel: 'Upgrade',
+              onConfirm: () => this.applySmithOffer(dataset.offerId),
+            });
+          }
+        },
+      },
+      info: {
+        eyebrow: 'Info',
+        title: 'Notice',
+        subtitle: '',
+        footerNote: 'Service message',
+        footerActions: [
+          { label: 'Close', variant: 'primary', close: true },
+        ],
+        renderBody: () => '<div class="ftk-modal-panel"><div class="ftk-modal-panel-body"><div class="ftk-modal-empty">Notice</div></div></div>',
+      },
+      confirm: {
+        eyebrow: 'Confirm',
+        title: 'Confirm action',
+        subtitle: '',
+        footerNote: 'Dangerous or costly actions should go through this modal.',
+        footerActions: [
+          { label: 'Cancel', variant: 'ghost', close: true },
+          { label: 'Confirm', variant: 'primary' },
+        ],
+        renderBody: () => '<div class="ftk-modal-panel"><div class="ftk-modal-panel-body"><div class="ftk-modal-empty">Confirm action</div></div></div>',
+      },
+    };
+  }
+
+  openTownModal(modalId) {
+    const node = this.getNodeById(this.game.nodeMenu.nodeId) || this.getCurrentNode();
+    if (!node) return;
+    this.modalSystem.setConfigs(this.getTownModalConfigs(node));
+    this.modalSystem.open(modalId);
+  }
+
   getNodeMarketStock(node) {
     const common = [
       { name: 'Godsbeard', kind: 'Трава', price: 6 + node.tier * 2, note: 'Базове лікування, як у класичному town market FTK.' },
@@ -3405,6 +4798,188 @@ export class WorldScene extends BaseScene {
     }
 
     this.dom.locationTitle.textContent = hero?.tile ? `${hero.name} | ${this.getTileLabel(hero.tile)}` : this.game.location;
+    this.updateClockHud();
+    this.renderMovePips();
+    this.updateActionButtons();
+    this.renderNodeMenu();
+  }
+
+  getCityMenuOptions(node) {
+    if (!this.isCityNode(node)) return [];
+    return [
+      { id: 'shop', labelUk: 'Shop', icon: CITY_MENU_ICONS.market },
+      { id: 'inn', labelUk: 'Inn', icon: CITY_MENU_ICONS.inn },
+      { id: 'quests', labelUk: 'Quests', icon: CITY_MENU_ICONS.quests },
+      { id: 'blacksmith', labelUk: 'Blacksmith', icon: CITY_MENU_ICONS.pipesmith },
+    ];
+  }
+
+  closeNodeMenu() {
+    this.game.nodeMenu = {
+      open: false,
+      nodeId: null,
+      section: 'overview',
+      notice: '',
+    };
+    this.dom.nodeMenu.classList.remove('is-open', 'is-city');
+    this.dom.nodeMenu.innerHTML = '';
+    this.dom.cityMenu.classList.remove('is-open', 'is-city');
+    this.dom.cityMenu.innerHTML = '';
+    if (this.modalSystem?.isOpen()) this.modalSystem.close();
+  }
+
+  setNodeMenuNotice(message) {
+    this.game.nodeMenu.notice = message;
+    if (this.game.nodeMenu.open) this.renderNodeMenu();
+    if (this.modalSystem?.isOpen()) this.refreshTownModal();
+  }
+
+  handleNodeMenuClick(event) {
+    const closeButton = event.target.closest('[data-node-close]');
+    if (closeButton) {
+      this.closeNodeMenu();
+      return;
+    }
+
+    const cityModalButton = event.target.closest('[data-city-modal]');
+    if (cityModalButton) {
+      this.openTownModal(cityModalButton.dataset.cityModal);
+      return;
+    }
+
+    const sectionButton = event.target.closest('[data-node-section]');
+    if (sectionButton) {
+      this.game.nodeMenu.section = sectionButton.dataset.nodeSection;
+      this.game.nodeMenu.notice = '';
+      this.renderNodeMenu();
+      return;
+    }
+
+    const serviceButton = event.target.closest('[data-node-service]');
+    if (serviceButton) {
+      this.useNodeService(serviceButton.dataset.nodeService);
+      return;
+    }
+
+    const contractButton = event.target.closest('[data-node-contract]');
+    if (contractButton) {
+      this.acceptNodeContract(contractButton.dataset.nodeContract);
+      return;
+    }
+
+    const actionButton = event.target.closest('[data-node-action]');
+    if (actionButton) {
+      const action = actionButton.dataset.nodeAction;
+      if (action === 'devote') this.devoteAtNode();
+      if (action === 'expedition') this.startNodeExpedition();
+      if (action === 'route') this.pinRouteObjective(actionButton.dataset.nodeTarget);
+    }
+  }
+
+  renderCityMenu(node) {
+    const hero = this.getSelectedHero();
+    const options = this.getCityMenuOptions(node);
+    const optionButtons = options.map((entry) => `
+      <button class="game-city-menu-option" type="button" data-city-modal="${entry.id}">
+        <span class="game-city-menu-icon">${entry.icon}</span>
+        <span class="game-city-menu-label">${entry.labelUk}</span>
+      </button>
+    `).join('');
+    const quickActions = this.getNodeServiceEntries(node)
+      .filter((entry) => ['healer', 'meditation', 'blessing'].includes(entry.id))
+      .map((entry) => `<button class="btn btn--ghost game-city-menu-action" type="button" data-node-service="${entry.id}">${entry.labelUk}${entry.cost ? ` • ${entry.cost}g` : ''}</button>`)
+      .join('');
+    const activeContract = this.game.activeContract ? this.game.activeContract.titleUk : 'None';
+
+    this.dom.nodeMenu.classList.remove('is-open', 'is-city');
+    this.dom.nodeMenu.innerHTML = '';
+    this.dom.cityMenu.classList.add('is-open', 'is-city');
+    this.dom.cityMenu.innerHTML = `
+      <div class="game-city-menu-shell">
+        <div class="game-city-menu-head">
+          <div>
+            <div class="game-city-menu-kicker">Town Hub</div>
+            <div class="game-city-menu-title">${node.nameUk || node.nameEn}</div>
+          </div>
+          <button class="game-city-menu-close" type="button" data-node-close>&times;</button>
+        </div>
+        <div class="game-city-menu-copy">${node.storySummaryUk || node.notes || 'Safe hub for recovery, shopping and route planning.'}</div>
+        <div class="game-city-menu-options">${optionButtons}</div>
+        <div class="game-city-menu-detail">
+          <div class="game-city-menu-detail-copy">Choose a town service to open the new fantasy modal layer. This keeps the world map visible while giving each service a dedicated UI.</div>
+          <div class="game-city-menu-stats">
+            <div class="game-city-menu-stat"><span>Hero</span><strong>${hero?.name || '—'}</strong></div>
+            <div class="game-city-menu-stat"><span>Gold</span><strong>${this.game.gold}</strong></div>
+            <div class="game-city-menu-stat"><span>HP</span><strong>${hero?.hp ?? 0}/${hero?.maxHp ?? 0}</strong></div>
+            <div class="game-city-menu-stat"><span>Focus</span><strong>${hero?.focus ?? 0}/${hero?.maxFocus ?? 0}</strong></div>
+            <div class="game-city-menu-stat"><span>Contract</span><strong>${activeContract}</strong></div>
+            <div class="game-city-menu-stat"><span>Level</span><strong>${hero?.level ?? 1}</strong></div>
+          </div>
+          ${quickActions ? `<div class="game-city-menu-actions">${quickActions}</div>` : ''}
+        </div>
+        ${this.game.nodeMenu.notice ? `<div class="game-city-menu-notice">${this.game.nodeMenu.notice}</div>` : ''}
+      </div>
+    `;
+  }
+
+  updateHud(tile) {
+    if (tile) this.map.selected = tile;
+    const hero = this.getSelectedHero();
+    const selected = this.map.selected;
+    this.game.interfaceState = this.getWorldInterfaceState();
+
+    if (!selected) {
+      this.dom.selectedInfo.textContent = hero?.tile ? this.getTileLabel(hero.tile) : 'No Hex';
+      this.dom.selectedMeta.textContent = hero
+        ? `${hero.name} | ${hero.movePoints}/${hero.maxMovePoints} move | XP ${hero.xp}/${hero.xpToNext || 'MAX'}`
+        : 'Select a hero';
+      this.dom.selectedLore.textContent = '';
+      this.dom.selectedTags.innerHTML = '';
+    } else {
+      const monsterPack = this.getMonsterPackAtTile(selected);
+      const move = selected.terrain === 'water'
+        ? 'Blocked'
+        : String(Math.max(1, TERRAIN[selected.terrain].move - (selected.road ? 1 : 0)));
+      const encounter = monsterPack
+        ? 100
+        : selected.town
+          ? 0
+          : selected.poi
+            ? 18
+            : selected.terrain === 'forest'
+              ? 18
+              : selected.terrain === 'mountain'
+                ? 24
+                : selected.terrain === 'wasteland'
+                  ? 16
+                  : selected.terrain === 'water'
+                    ? 0
+                    : 10;
+      const parts = [`${selected.q}, ${selected.r}`];
+      if (selected.terrain === 'water') parts.push('Water');
+      else parts.push(`Move ${move}`);
+      if (encounter > 0) parts.push(`${encounter}% risk`);
+      if (selected.road) parts.push('Road');
+      if (selected.town) parts.push('Town');
+      if (selected.poi) parts.push(selected.poi.label);
+      if (monsterPack) parts.push(`${monsterPack.members.length} monsters`);
+      this.dom.selectedInfo.textContent = this.getTileLabel(selected);
+      this.dom.selectedMeta.textContent = parts.join(' | ');
+
+      const node = selected.node || null;
+      const loreParts = [];
+      if (node?.storySummaryUk || node?.notes) loreParts.push(node.storySummaryUk || node.notes);
+      if (monsterPack) loreParts.push(this.getMonsterPackLore(monsterPack));
+      if (this.game.activeContract?.titleUk) loreParts.push(`Contract: ${this.game.activeContract.titleUk}`);
+      this.dom.selectedLore.textContent = loreParts.join(' | ');
+      this.dom.selectedTags.innerHTML = [...this.getNodeServiceLabels(node), ...this.getMonsterPackTags(monsterPack)]
+        .slice(0, 6)
+        .map((label) => `<span class="game-selected-tag">${label}</span>`)
+        .join('');
+    }
+
+    this.dom.locationTitle.textContent = hero?.tile ? `${hero.name} | ${this.getTileLabel(hero.tile)}` : this.game.location;
+    this.dom.stateValue.textContent = this.game.interfaceState;
     this.updateClockHud();
     this.renderMovePips();
     this.updateActionButtons();
