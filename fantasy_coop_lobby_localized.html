@@ -1,0 +1,2682 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fantasy Co-op Lobby</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cinzel+Decorative:wght@400;700&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --teal: #58b7c2;
+      --teal-glow: rgba(88,183,194,0.30);
+      --panel-bg: rgba(232, 236, 232, 0.88);
+      --panel-border: rgba(128, 153, 164, 0.42);
+      --text-dark: #23313a;
+      --text-mid: #4b5d68;
+      --text-light: #70838d;
+      --rune-blue: #61bfd7;
+      --shadow: rgba(0,0,0,0.34);
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      font-family: 'Crimson Pro', Georgia, serif;
+      overflow: hidden;
+      background: #081522;
+    }
+
+    body {
+      color: var(--text-dark);
+    }
+
+    .hidden { display: none !important; }
+
+    .bg {
+      position: fixed; inset: 0;
+      background:
+        linear-gradient(180deg, #071628 0%, #0a2138 12%, #102f1b 30%, #164727 55%, #1d5a32 78%, #163c22 100%);
+      z-index: 0;
+    }
+
+    .bg-image,
+    .mountains-image,
+    .forest-image,
+    .ground-image,
+    .rune-image {
+      position: fixed;
+      inset: 0;
+      background-repeat: no-repeat;
+      background-position: center bottom;
+      background-size: cover;
+      pointer-events: none;
+    }
+
+    .bg-image { z-index: 1; opacity: .34; }
+    .mountains-image { z-index: 2; opacity: .55; }
+    .forest-image { z-index: 3; opacity: 1; }
+    .ground-image {
+      inset: auto 0 0 0;
+      height: 54%;
+      background-size: cover;
+      z-index: 4;
+      opacity: .7;
+    }
+
+    .rune-image{
+      left: 50%;
+      bottom: 70px;
+      width: 760px;
+      height: 190px;
+      transform: translateX(-50%);
+      z-index: 5;
+      background-size: contain;
+      background-position: center bottom;
+      pointer-events: none;
+    }
+
+    .aurora {
+      position: fixed; top: 0; left: 0; right: 0; height: 44%;
+      background:
+        radial-gradient(ellipse 80% 60% at 30% 0%, rgba(80,180,230,0.22) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 70% 0%, rgba(160,100,220,0.18) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 40% at 50% 5%, rgba(80,200,160,0.14) 0%, transparent 50%);
+      animation: auroraPulse 6s ease-in-out infinite alternate;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    @keyframes auroraPulse {
+      0% { opacity: .7; }
+      100% { opacity: 1; }
+    }
+
+    /* Ground CSS removed — using sprite-based ground image instead */
+
+    .stars { position: fixed; top: 0; left: 0; right: 0; height: 50%; z-index: 2; pointer-events: none; }
+    .star {
+      position: absolute; border-radius: 50%; background: #fff;
+      animation: twinkle 3s ease-in-out infinite;
+    }
+
+    @keyframes twinkle {
+      0%,100% { opacity: .15; }
+      50% { opacity: .9; }
+    }
+
+    /* Trees, CSS-particles and related art removed — scene is sprite-based now */
+
+    .screen {
+      position: fixed; inset: 0; z-index: 10;
+      display: grid;
+      grid-template-columns: 220px 1fr 220px;
+      grid-template-rows: auto 1fr 86px;
+      gap: 10px;
+      padding: 14px 14px 0;
+    }
+
+    .panel {
+      background:
+        linear-gradient(180deg, rgba(241,244,240,0.90), rgba(220,228,228,0.84));
+      border: 1px solid var(--panel-border);
+      border-radius: 16px;
+      padding: 12px 14px;
+      position: relative;
+      box-shadow:
+        0 10px 28px rgba(0,0,0,0.22),
+        inset 0 1px 0 rgba(255,255,255,0.55),
+        inset 0 -1px 0 rgba(0,0,0,0.05);
+      overflow: hidden;
+      backdrop-filter: blur(6px);
+    }
+
+    .panel::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, transparent, var(--teal), rgba(160,100,220,0.6), var(--teal), transparent);
+      border-radius: 14px 14px 0 0;
+    }
+
+    .panel::after {
+      content: '◆';
+      position: absolute; top: 6px; right: 8px;
+      font-size: 8px; color: var(--teal); opacity: .6;
+    }
+
+    .panel-title {
+      font-family: 'Cinzel', serif;
+      font-size: 9px;
+      letter-spacing: 3px;
+      color: var(--text-light);
+      text-transform: uppercase;
+      text-align: center;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(80,160,200,0.2);
+    }
+
+    .top-bar {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: rgba(225,235,236,0.16);
+      border: 1px solid rgba(170,210,220,0.18);
+      border-radius: 16px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 8px 22px rgba(0,0,0,.18);
+    }
+
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font: 700 11px 'Cinzel', serif;
+      letter-spacing: 1px;
+      color: #e8f8ff;
+      background: radial-gradient(circle at 30% 30%, rgba(120,240,255,.25), rgba(50,120,170,.08));
+      border: 1px solid rgba(160,220,255,.12);
+    }
+
+    .brand-title {
+      font-family: 'Cinzel Decorative', serif;
+      color: #edf9ff;
+      font-size: 18px;
+      letter-spacing: 1px;
+      text-shadow: 0 2px 8px rgba(0,0,0,.45);
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .lang-switch {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(225,242,255,0.12);
+      border: 1px solid rgba(160,210,240,0.22);
+      border-radius: 999px;
+      padding: 4px;
+      backdrop-filter: blur(4px);
+    }
+
+    .lang-btn {
+      border: none;
+      background: transparent;
+      color: #dff5ff;
+      font: 700 11px 'Cinzel', serif;
+      letter-spacing: 1.5px;
+      border-radius: 999px;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: .2s ease;
+    }
+
+    .lang-btn.active {
+      color: #103243;
+      background: linear-gradient(180deg, rgba(200,245,255,.95), rgba(170,220,240,.88));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 0 12px rgba(90,210,240,.18);
+    }
+
+    .left-panel {
+      grid-column: 1;
+      grid-row: 2;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .hero-name-big {
+      font-family: 'Cinzel', serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-dark);
+      text-align: center;
+      line-height: 1.1;
+    }
+
+    .hero-class-big {
+      font-family: 'Cinzel', serif;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--rune-blue);
+      text-align: center;
+      margin: 1px 0 12px;
+      text-transform: uppercase;
+    }
+
+    .hero-portrait {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 14px;
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 10px;
+      background:
+        linear-gradient(180deg, rgba(105,160,210,.26), rgba(55,105,150,.18)),
+        radial-gradient(circle at 50% 30%, rgba(120,240,255,.18), transparent 50%),
+        rgba(19,40,58,.44);
+      border: 1px solid rgba(110,180,220,.34);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 8px 18px rgba(0,0,0,.16);
+    }
+
+    .hero-portrait img,
+    .party-card-sprite {
+      image-rendering: auto;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .hero-portrait img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      filter: drop-shadow(0 8px 20px rgba(0,0,0,.3));
+    }
+
+    .hero-icon-fallback {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+      color: transparent;
+      text-shadow: none;
+    }
+
+    .hero-silhouette { width: 64%; height: 64%; border-radius: 8px; background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)); box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 8px 18px rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,0.02); }
+
+    .section-label {
+      font-family: 'Cinzel', serif;
+      font-size: 8px;
+      letter-spacing: 3px;
+      color: var(--text-light);
+      text-transform: uppercase;
+      text-align: center;
+      margin: 10px 0 5px;
+      padding: 3px 0;
+      border-top: 1px solid rgba(80,160,200,.15);
+      border-bottom: 1px solid rgba(80,160,200,.15);
+    }
+
+    .role-desc {
+      font-size: 11px;
+      color: var(--text-mid);
+      text-align: center;
+      line-height: 1.45;
+      font-style: italic;
+      padding: 0 4px;
+      min-height: 52px;
+    }
+
+    .skill-list {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .skill-item {
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.30), rgba(225,233,236,0.50));
+      border: 1px solid rgba(115, 150, 165, 0.22);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.45);
+    }
+
+    .skill-name {
+      display: block;
+      margin-bottom: 4px;
+      font-family: 'Cinzel', serif;
+      font-size: 9px;
+      letter-spacing: 1.4px;
+      color: var(--text-dark);
+      text-transform: uppercase;
+    }
+
+    .skill-desc {
+      font-size: 10px;
+      line-height: 1.4;
+      color: var(--text-mid);
+    }
+
+    .stat-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .stat-icon {
+      width: 28px;
+      text-align: center;
+      font: 700 9px 'Cinzel', serif;
+      letter-spacing: 1px;
+      color: var(--text-light);
+    }
+
+    .stat-bar-bg {
+      flex: 1;
+      height: 6px;
+      background: rgba(80,120,160,.15);
+      border-radius: 3px;
+      overflow: hidden;
+      border: .5px solid rgba(80,140,180,.2);
+    }
+
+    .stat-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width .35s ease;
+    }
+
+    .hero-badge {
+      margin: 10px auto 0;
+      min-width: 44px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font: 700 10px 'Cinzel', serif;
+      letter-spacing: 1px;
+      color: #fff;
+      text-align: center;
+      box-shadow: 0 0 8px rgba(100,70,200,.25);
+    }
+
+    .center-stage {
+      grid-column: 2;
+      grid-row: 2;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      min-width: 0;
+      overflow: hidden;
+      border-radius: 18px;
+    }
+
+    .stage-vignette {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 50% 64%, rgba(0,0,0,0) 16%, rgba(0,0,0,.04) 52%, rgba(0,0,0,.24) 100%),
+        linear-gradient(180deg, rgba(255,255,255,.015), transparent 22%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .pedestals-area {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 420px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 2;
+    }
+
+    .pedestal-wrapper {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      cursor: pointer;
+      transition: transform .22s ease, filter .22s ease;
+      transform-origin: center bottom;
+      transform: translateX(-50%);
+      min-width: 80px;
+    }
+
+    .pedestal-wrapper:hover {
+      transform: translateX(-50%) translateY(-6px) scale(1.025);
+    }
+
+    .pedestal-wrapper.selected {
+      transform: translateX(-50%) translateY(-10px);
+      filter: drop-shadow(0 0 18px rgba(80,220,200,.18));
+    }
+
+    .hero-label {
+      position: absolute;
+      bottom: calc(100% + 10px);
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      text-align: center;
+      z-index: 7;
+    }
+
+    .hero-label-name {
+      display: block;
+      font-family: 'Cinzel', serif;
+      font-size: 13px; /* increased for readability */
+      font-weight: 700;
+      color: #e8f5ff;
+      text-shadow: 0 2px 8px rgba(0,0,0,.9), 0 0 10px rgba(40,120,140,.35);
+      letter-spacing: .6px;
+    }
+
+    .hero-label-sub {
+      display: block;
+      font-size: 10px; /* slightly larger */
+      letter-spacing: .6px;
+      color: rgba(180,230,255,.92);
+      text-shadow: 0 1px 6px rgba(0,0,0,.9);
+      font-family: 'Cinzel', serif;
+      text-transform: uppercase;
+    }
+
+    .ready-tag {
+      display: inline-block;
+      font-size: 8px;
+      padding: 1px 6px;
+      border-radius: 8px;
+      font-family: 'Cinzel', serif;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-top: 2px;
+      text-shadow: none;
+    }
+
+    .ready-tag.rdy {
+      background: rgba(40,160,90,.86);
+      color: #b0ffcc;
+      border: 1px solid rgba(60,200,110,.6);
+    }
+
+    .ready-tag.waiting {
+      background: rgba(160,100,20,.86);
+      color: #ffe090;
+      border: 1px solid rgba(220,150,30,.6);
+    }
+
+    .player-badge {
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 8px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: 'Cinzel', serif;
+      letter-spacing: 1px;
+      font-weight: 700;
+      color: #fff;
+      z-index: 8;
+      box-shadow: 0 3px 8px rgba(0,0,0,.25);
+    }
+
+    .hero-stage {
+      position: absolute;
+      left: 50%;
+      bottom: 100%;
+      transform: translateX(-50%);
+      z-index: 6;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .hero-stage-sprite {
+      display: block;
+      object-fit: contain;
+      filter: drop-shadow(0 8px 18px rgba(0,0,0,.36));
+      transition: transform .2s ease, filter .25s ease;
+    }
+
+    .pedestal-wrapper.selected .hero-stage-sprite {
+      animation: heroFloat 2s ease-in-out infinite;
+      filter: drop-shadow(0 0 18px rgba(80,220,200,.3)) drop-shadow(0 8px 18px rgba(0,0,0,.36));
+    }
+
+    .hero-stage-fallback {
+      font-size: 42px;
+      line-height: 1;
+      filter: drop-shadow(0 8px 18px rgba(0,0,0,.36));
+    }
+
+    @keyframes heroFloat {
+      0%,100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+
+    .pedestal-stack {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      z-index: 5;
+    }
+
+    .pedestal-layer {
+      position: relative;
+      display: block;
+      max-width: none;
+      object-fit: contain;
+      filter: drop-shadow(0 6px 14px rgba(0,0,0,.25));
+    }
+
+    /* Old CSS pedestal blocks removed — using sprite images for pedestal layers */
+
+    .pedestal-back-sprite,
+    .pedestal-front-sprite {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      object-fit: contain;
+      z-index: 1;
+    }
+
+    .pedestal-back-sprite { bottom: 0; }
+    .pedestal-front-sprite { bottom: 0; z-index: 7; }
+
+    .pedestal-glow {
+      position: absolute;
+      bottom: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: radial-gradient(ellipse, var(--teal-glow) 0%, transparent 70%);
+      animation: ringPulse 2.2s ease-in-out infinite;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    @keyframes ringPulse {
+      0%,100% { opacity: .4; transform: translateX(-50%) scaleX(1); }
+      50% { opacity: .88; transform: translateX(-50%) scaleX(1.08); }
+    }
+
+    /* selected pedestal-top visuals removed; use sprite VFX (pedestal-glow) */
+
+    .selected .pedestal-glow {
+      background: radial-gradient(ellipse, rgba(60,220,180,0.6) 0%, transparent 70%);
+    }
+
+    .rune-aura {
+      position: absolute;
+      bottom: -16px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      border: 2px solid rgba(60,200,160,0.5);
+      box-shadow: 0 0 12px rgba(60,200,160,0.4), inset 0 0 12px rgba(60,200,160,0.1);
+      animation: runeAppear .4s forwards;
+      z-index: 2;
+    }
+
+    @keyframes runeAppear { from { opacity: 0; } to { opacity: 1; } }
+
+    .magic-beam {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(100% + 6px);
+      width: 3px;
+      background: linear-gradient(to top, rgba(60,220,180,0.6), transparent);
+      border-radius: 2px;
+      animation: beamPulse 2s ease-in-out infinite;
+      pointer-events: none;
+      z-index: 3;
+    }
+
+    @keyframes beamPulse {
+      0%,100% { opacity: .38; height: 0; }
+      50% { opacity: .82; height: 60px; }
+    }
+
+    /* empty pedestal placeholder removed — replaced by sprite back image */
+
+    @keyframes emptyPulse {
+      0%,100% { opacity: .6; }
+      50% { opacity: 1; }
+    }
+
+    .pedestal-wrapper.pedestal-size-sm .pedestal-stack { transform: scale(0.84); opacity: .76; }
+    .pedestal-wrapper.pedestal-size-md .pedestal-stack { transform: scale(0.96); }
+    .pedestal-wrapper.pedestal-size-lg .pedestal-stack { transform: scale(1.10); }
+
+    /* empty slot visual tweaks (muted, less noisy) */
+    .pedestal-wrapper.empty-slot { filter: saturate(.72) grayscale(.12); }
+    .pedestal-wrapper.empty-slot .pedestal-glow { opacity: .18; animation: emptyPulse 2.8s ease-in-out infinite; filter: saturate(.55); }
+    .pedestal-wrapper.empty-slot:hover { transform: translateX(-50%) translateY(-4px); }
+
+    .empty-slot-label {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      font-family: 'Cinzel', serif;
+      font-size: 10px;
+      letter-spacing: 1.4px;
+      color: rgba(218,236,244,0.86);
+      text-shadow: 0 2px 6px rgba(0,0,0,.65);
+      text-transform: uppercase;
+      z-index: 8;
+    }
+
+    /* hero stage positioning so legs tuck behind pedestal_front */
+    .hero-stage {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: -4px;
+      z-index: 5;
+      pointer-events: none;
+      display: flex;
+      align-items: end;
+      justify-content: center;
+    }
+
+    .hero-stage-sprite {
+      display: block;
+      object-fit: contain;
+      filter: drop-shadow(0 10px 20px rgba(0,0,0,.34));
+      transition: transform .2s ease, filter .25s ease;
+      margin-bottom: -10px;
+    }
+
+    .empty-slot-label {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      font-family: 'Cinzel', serif;
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: rgba(180,220,240,0.72);
+      text-shadow: 0 1px 4px rgba(0,0,0,.6);
+      text-transform: uppercase;
+      z-index: 4;
+    }
+
+    .stage-caption { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 6; text-align: center; pointer-events: none; }
+    .stage-caption::before { content: ''; position: absolute; left: 50%; transform: translateX(-50%); top: -6px; width: min(720px,90%); height: 44px; background: rgba(0,0,0,0.18); border-radius: 8px; z-index: -1; backdrop-filter: blur(2px); }
+    .stage-caption .line1 { font: 700 14px 'Cinzel', serif; letter-spacing: 3px; text-transform: uppercase; color: rgba(240,250,255,.96); text-shadow: 0 3px 12px rgba(0,0,0,.6); padding: 4px 8px; }
+    .stage-caption .line2 { margin-top: 4px; font: 400 12px 'Crimson Pro', serif; color: rgba(220,240,250,.86); text-shadow: 0 1px 6px rgba(0,0,0,.5); }
+
+    .party-select-stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-start;
+      padding: 72px 28px 26px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      z-index: 2;
+    }
+
+    .party-select-grid {
+      width: max-content;
+      min-width: 100%;
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 18px;
+      align-items: flex-end;
+      justify-content: center;
+      margin: 0 auto;
+    }
+
+    .party-card {
+      position: relative;
+      width: clamp(220px, 22vw, 280px);
+      min-height: 620px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      transition: filter .18s ease;
+    }
+
+    .party-card-inner {
+      width: 100%;
+      max-width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .party-head {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+      z-index: 5;
+    }
+
+    .party-stage {
+      position: relative;
+      width: 100%;
+      height: 430px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .party-stage::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      bottom: 10px;
+      width: 82%;
+      height: 18px;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: radial-gradient(ellipse, rgba(106, 216, 221, 0.34) 0%, rgba(32, 78, 92, 0.16) 48%, transparent 76%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .party-card-sprite {
+      position: absolute;
+      left: calc(50% + var(--hero-shift, 0px));
+      bottom: calc(18px + var(--hero-bottom, 0px));
+      transform: translateX(-50%) scale(var(--hero-scale, 1));
+      transform-origin: center bottom;
+      max-width: 94%;
+      max-height: 420px;
+      object-fit: contain;
+      z-index: 2;
+      filter: drop-shadow(0 18px 30px rgba(0,0,0,.35));
+    }
+
+    .party-card-sprite.is-hidden,
+    .party-card-fallback.is-hidden {
+      display: none;
+    }
+
+    .party-card-fallback {
+      position: absolute;
+      left: calc(50% + var(--hero-shift, 0px));
+      bottom: calc(18px + var(--hero-bottom, 0px));
+      transform: translateX(-50%);
+      width: 220px;
+      height: 320px;
+      border-radius: 22px 22px 12px 12px;
+      background:
+        linear-gradient(180deg, rgba(150,190,205,.18), rgba(70,100,120,.22)),
+        rgba(20,30,40,.18);
+      border: 1px solid rgba(190,230,240,.12);
+      z-index: 2;
+    }
+
+    .party-name {
+      font: 700 22px 'Cinzel', serif;
+      color: #f2fbff;
+      text-shadow: 0 3px 10px rgba(0,0,0,.55);
+      text-align: center;
+    }
+
+    .party-class {
+      font: 700 13px 'Cinzel', serif;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      color: #d9edf4;
+      text-align: center;
+      margin-top: -2px;
+    }
+
+    .party-status {
+      min-width: 116px;
+      text-align: center;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font: 700 12px 'Cinzel', serif;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      box-shadow: 0 4px 10px rgba(0,0,0,.18);
+    }
+
+    .party-status.ready {
+      color: #e8fff0;
+      background: linear-gradient(180deg, rgba(60,175,105,.96), rgba(46,140,83,.96));
+      border: 1px solid rgba(160,240,190,.28);
+    }
+
+    .party-status.picking {
+      color: #fff2d8;
+      background: linear-gradient(180deg, rgba(193,142,44,.96), rgba(159,112,29,.96));
+      border: 1px solid rgba(255,214,132,.22);
+    }
+
+    .party-controls {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      width: 100%;
+    }
+
+    .party-slot-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .party-arrow {
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      border: 1px solid rgba(180,220,232,.22);
+      background: linear-gradient(180deg, rgba(230,240,244,.90), rgba(190,210,220,.82));
+      color: #253742;
+      font: 700 24px 'Cinzel', serif;
+      cursor: pointer;
+      box-shadow: 0 6px 14px rgba(0,0,0,.16);
+      transition: .18s ease;
+    }
+
+    .party-arrow:hover {
+      transform: translateY(-2px);
+      border-color: rgba(200,235,244,.40);
+    }
+
+    .party-player {
+      min-width: 82px;
+      text-align: center;
+      padding: 8px 14px;
+      border-radius: 999px;
+      color: #fff;
+      font: 700 13px 'Cinzel', serif;
+      letter-spacing: 1px;
+      box-shadow: 0 6px 14px rgba(0,0,0,.14);
+    }
+
+    .party-ready-btn {
+      min-width: 148px;
+      padding: 9px 16px;
+      border: 1px solid rgba(194, 226, 234, 0.2);
+      border-radius: 999px;
+      cursor: pointer;
+      font: 700 12px 'Cinzel', serif;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #eefbff;
+      box-shadow: 0 7px 18px rgba(0,0,0,.18);
+      transition: transform .18s ease, filter .18s ease, border-color .18s ease;
+    }
+
+    .party-ready-btn.ready {
+      background: linear-gradient(180deg, rgba(58,166,104,.98), rgba(38,124,77,.98));
+      border-color: rgba(170, 245, 196, 0.26);
+    }
+
+    .party-ready-btn.waiting {
+      background: linear-gradient(180deg, rgba(150, 75, 55, .98), rgba(102, 44, 30, .98));
+      border-color: rgba(255, 207, 180, 0.18);
+    }
+
+    .party-ready-btn:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.04);
+    }
+
+    .party-card.selected .party-name {
+      color: #ffffff;
+      text-shadow: 0 0 14px rgba(140,235,255,.25), 0 3px 10px rgba(0,0,0,.55);
+    }
+
+    .party-card.selected .party-card-sprite {
+      filter: drop-shadow(0 0 18px rgba(110,235,255,.20)) drop-shadow(0 14px 24px rgba(0,0,0,.34));
+    }
+
+    .stage-caption {
+      top: 16px;
+      z-index: 3;
+    }
+
+    .stage-caption::before {
+      top: -8px;
+      width: min(760px, 96%);
+      height: 48px;
+      background: rgba(0,0,0,0.14);
+      border-radius: 10px;
+    }
+
+    .stage-caption .line1 {
+      color: rgba(240,250,255,.94);
+      text-shadow: 0 3px 12px rgba(0,0,0,.54);
+    }
+
+    .stage-caption .line2 {
+      color: rgba(220,240,250,.78);
+      text-shadow: 0 1px 6px rgba(0,0,0,.45);
+    }
+
+    @media (max-width: 1300px) {
+      .party-select-stage {
+        padding-inline: 18px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .party-select-stage {
+        padding: 92px 16px 18px;
+      }
+
+      .party-card {
+        width: min(78vw, 280px);
+        min-height: 560px;
+      }
+
+      .party-stage {
+        height: 360px;
+      }
+
+      .party-card-sprite {
+        max-height: 340px;
+      }
+    }
+
+    /* rune SVG removed; rune sprite will be set as background on a dedicated layer */
+
+    .right-panel {
+      grid-column: 3;
+      grid-row: 2;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 0;
+    }
+
+    .icon-header {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+
+    .icon-circle {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(80,160,220,0.2), rgba(60,120,180,0.15));
+      border: 1.5px solid rgba(80,160,220,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--rune-blue);
+      font: 700 11px 'Cinzel', serif;
+      letter-spacing: 1px;
+    }
+
+    .stat-badge {
+      background: linear-gradient(135deg, rgba(80,160,220,0.12), rgba(60,130,200,0.08));
+      border: 1px solid rgba(80,150,210,0.25);
+      border-radius: 7px;
+      padding: 5px 10px;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+
+    .stat-badge-num {
+      font-family: 'Cinzel', serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--rune-blue);
+    }
+
+    .stat-badge-label {
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--text-light);
+      font-family: 'Cinzel', serif;
+      text-transform: uppercase;
+    }
+
+    .field-label {
+      font-family: 'Cinzel', serif;
+      font-size: 8px;
+      letter-spacing: 3px;
+      color: var(--text-light);
+      text-transform: uppercase;
+      text-align: center;
+      margin: 8px 0 4px;
+    }
+
+    .field-box,
+    select.field-box {
+      width: 100%;
+      background: linear-gradient(135deg, rgba(60,120,180,0.12), rgba(40,90,150,0.08));
+      border: 1px solid rgba(80,150,210,0.3);
+      border-radius: 7px;
+      padding: 8px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      transition: border-color .2s, box-shadow .2s;
+      color: var(--text-dark);
+      font: 600 10px 'Cinzel', serif;
+      letter-spacing: .8px;
+    }
+
+    .field-box:hover,
+    select.field-box:hover {
+      border-color: rgba(80,180,240,0.5);
+      box-shadow: 0 0 0 3px rgba(80,180,240,.06);
+    }
+
+    .field-box-val {
+      font-family: 'Cinzel', serif;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-dark);
+    }
+
+    .field-box-icon {
+      font-size: 10px;
+      color: var(--rune-blue);
+    }
+
+    .difficulty-pips {
+      display: flex;
+      gap: 3px;
+      margin: 5px 0 2px;
+    }
+
+    .pip {
+      flex: 1;
+      height: 5px;
+      border-radius: 2px;
+      background: rgba(80,120,160,.15);
+      border: .5px solid rgba(80,140,180,.2);
+      transition: background .2s ease;
+    }
+
+    .pip.active { background: linear-gradient(90deg, #e06030, #f09050); }
+
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(80,160,200,0.3), transparent);
+      margin: 8px 0;
+    }
+
+    .lobby-code {
+      font-family: 'Cinzel', serif;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--rune-blue);
+      text-align: center;
+      letter-spacing: 3px;
+      padding: 8px;
+      border-radius: 7px;
+      background: rgba(60,160,220,0.1);
+      border: 1px solid rgba(60,160,220,0.25);
+    }
+
+    .show-all-btn {
+      width: 100%;
+      margin-top: 8px;
+      background: linear-gradient(135deg, rgba(80,160,220,0.12), rgba(60,130,200,0.08));
+      border: 1px solid rgba(80,150,210,0.3);
+      border-radius: 7px;
+      padding: 8px;
+      font-family: 'Cinzel', serif;
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--text-mid);
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: all .2s;
+    }
+
+    .show-all-btn:hover {
+      border-color: rgba(80,180,240,0.5);
+      color: var(--rune-blue);
+    }
+
+    .voice-status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: rgba(70,130,180,.08);
+      border: 1px solid rgba(80,150,210,.22);
+      font: 600 10px 'Cinzel', serif;
+      letter-spacing: 1px;
+      color: var(--text-mid);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px rgba(68,185,122,.5);
+    }
+
+    .bottom-bar {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      display: flex;
+      gap: 10px;
+      padding: 6px 0 10px;
+    }
+
+    .btn-action {
+      flex: 1;
+      background: linear-gradient(180deg, rgba(236,244,245,0.90) 0%, rgba(212,226,232,0.86) 100%);
+      border: 1px solid rgba(150,170,185,0.42);
+      border-radius: 12px;
+      padding: 8px 10px;
+      font-family: 'Cinzel', serif;
+      font-size: 10px;
+      letter-spacing: 1.1px;
+      font-weight: 700;
+      color: var(--text-dark);
+      min-height: 54px;
+      cursor: pointer;
+      text-transform: uppercase;
+      position: relative;
+      overflow: hidden;
+      transition: all .18s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-action::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--teal), transparent);
+    }
+
+    .btn-action::after {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, rgba(80,160,220,0.4), transparent);
+    }
+
+    .btn-corner {
+      position: absolute;
+      font-size: 9px;
+      color: var(--teal);
+      opacity: .7;
+      pointer-events: none;
+    }
+    .btn-corner.tl { top: 5px; left: 7px; }
+    .btn-corner.tr { top: 5px; right: 7px; }
+    .btn-corner.bl { bottom: 5px; left: 7px; }
+    .btn-corner.br { bottom: 5px; right: 7px; }
+
+    .btn-action:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.9), 0 0 16px rgba(80,200,240,0.2);
+      border-color: rgba(80,200,240,0.7);
+    }
+
+    .btn-action.primary {
+      background: linear-gradient(180deg, rgba(200,240,220,0.95) 0%, rgba(170,220,200,0.92) 100%);
+      border-color: rgba(80,200,140,0.7);
+      color: #1a5a38;
+    }
+
+    .btn-action.primary::before {
+      background: linear-gradient(90deg, transparent, rgba(60,200,140,0.8), transparent);
+    }
+
+    .btn-action:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,.15);
+    }
+
+    .toast {
+      position: fixed;
+      top: 74px;
+      right: 18px;
+      min-width: 220px;
+      max-width: 360px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(18,42,58,.88);
+      color: #ecfbff;
+      border: 1px solid rgba(120,220,255,.28);
+      box-shadow: 0 10px 26px rgba(0,0,0,.28);
+      z-index: 100;
+      backdrop-filter: blur(6px);
+      opacity: 0;
+      transform: translateY(-8px);
+      pointer-events: none;
+      transition: .22s ease;
+      font-size: 14px;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (max-width: 1200px) {
+      .screen {
+        grid-template-columns: 200px 1fr 200px;
+      }
+      .hero-portrait {
+        aspect-ratio: 4 / 5;
+      }
+    }
+
+    @media (max-width: 980px) {
+      body { overflow: auto; }
+      .screen {
+        position: relative;
+        min-height: 100vh;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto auto auto;
+        padding-bottom: 14px;
+      }
+      .top-bar,
+      .left-panel,
+      .center-stage,
+      .right-panel,
+      .bottom-bar {
+        grid-column: 1;
+        grid-row: auto;
+      }
+      .left-panel,
+      .right-panel,
+      .center-stage { min-height: unset; }
+      .party-select-stage {
+        min-height: 560px;
+        padding-top: 96px;
+      }
+      .bottom-bar {
+        flex-wrap: wrap;
+      }
+      .btn-action {
+        min-width: calc(50% - 5px);
+      }
+    }
+
+    @media (max-width: 640px) {
+      .screen { padding: 10px 10px 0; gap: 8px; }
+      .brand-title { font-size: 14px; }
+      .toolbar { gap: 6px; }
+      .lang-btn { padding: 7px 10px; font-size: 10px; }
+      .party-select-stage {
+        min-height: 520px;
+        padding: 104px 16px 18px;
+      }
+      .btn-action { min-width: 100%; }
+      /* rune SVG removed */
+      .toast { left: 12px; right: 12px; min-width: 0; max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="bg-image" id="bgImage"></div>
+  <div class="aurora"></div>
+  <div class="stars" id="stars"></div>
+  <div class="mountains-image" id="mountainsImage"></div>
+  <div class="forest-image" id="forestImage"></div>
+  <div class="ground-image" id="groundImage"></div>
+  <div class="rune-image" id="runeImage"></div>
+  <!-- legacy ground layers removed; using ground-image sprite -->
+  <!-- trees/particles removed: using sprite layers instead -->
+
+  <style>
+    .loading-veil { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; background: rgba(6,10,12,0.6); color: #ecfbff; font-family: 'Cinzel', serif; }
+    .loading-box { padding: 14px 16px; border-radius: 10px; background: rgba(12,18,24,0.6); border: 1px solid rgba(255,255,255,0.04); box-shadow: 0 10px 32px rgba(0,0,0,.6); }
+  </style>
+
+  <div id="loadingVeil" class="loading-veil" aria-hidden="true">
+    <div class="loading-box">Завантаження сценічних ассетів…</div>
+  </div>
+
+  <div class="screen">
+    <div class="top-bar">
+      <div class="brand">
+        <div class="brand-mark">C8</div>
+        <div class="brand-title" data-i18n="ui.brand">Circle of Eight</div>
+      </div>
+      <div class="toolbar">
+        <div class="lang-switch" aria-label="Language switcher">
+          <button class="lang-btn active" data-lang="uk">UA</button>
+          <button class="lang-btn" data-lang="en">EN</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="left-panel panel" id="left-panel">
+      <div class="hero-name-big" id="lp-name">Серго</div>
+      <div class="hero-class-big" id="lp-class">Кузнець</div>
+
+      <div class="hero-portrait" id="heroPortraitWrap">
+        <img id="lp-portrait" alt="Selected hero portrait" class="hidden" />
+        <div class="hero-icon-fallback" id="lp-icon"><div class="hero-silhouette"></div></div>
+      </div>
+
+      <div class="section-label" data-i18n="ui.role">Role</div>
+      <div class="role-desc" id="lp-role"></div>
+
+      <div class="section-label" data-i18n="ui.skills">Skills</div>
+      <div class="skill-list" id="lp-skills"></div>
+
+      <div class="section-label" data-i18n="ui.stats">Stats</div>
+
+      <div class="stat-row">
+        <div class="stat-icon">HP</div>
+        <div class="stat-bar-bg"><div class="stat-bar-fill" id="st-hp"></div></div>
+      </div>
+      <div class="stat-row">
+        <div class="stat-icon">ATK</div>
+        <div class="stat-bar-bg"><div class="stat-bar-fill" id="st-atk"></div></div>
+      </div>
+      <div class="stat-row">
+        <div class="stat-icon">DEF</div>
+        <div class="stat-bar-bg"><div class="stat-bar-fill" id="st-def"></div></div>
+      </div>
+      <div class="stat-row">
+        <div class="stat-icon">MAG</div>
+        <div class="stat-bar-bg"><div class="stat-bar-fill" id="st-mag"></div></div>
+      </div>
+
+      <div class="hero-badge" id="lp-badge">P1</div>
+    </aside>
+
+    <main class="center-stage">
+      <div class="stage-vignette"></div>
+      <div class="stage-caption">
+        <div class="line1" data-i18n="ui.stageTitle">Gather the Party</div>
+        <div class="line2" data-i18n="ui.stageSubtitle">Choose champions, prepare the world, and begin the expedition.</div>
+      </div>
+
+      <!-- rune SVG removed; rune sprite layer will be used -->
+
+      <div class="party-select-stage">
+        <div class="party-select-grid" id="partySelectGrid"></div>
+      </div>
+    </main>
+
+    <aside class="right-panel">
+      <div class="panel">
+        <div class="icon-header"><div class="icon-circle">P4</div></div>
+        <div class="panel-title" data-i18n="ui.partyDetail">Party Detail</div>
+
+        <div class="stat-badge">
+          <div class="stat-badge-num" id="player-count">0</div>
+          <div class="stat-badge-label" data-i18n="ui.playersConnected">Players Connected</div>
+        </div>
+
+        <div class="field-label" data-i18n="ui.difficulty">Difficulty</div>
+        <select class="field-box" id="difficultySelect" aria-label="Difficulty selector"></select>
+        <div class="difficulty-pips" id="difficultyPips"></div>
+
+        <div class="field-label" data-i18n="ui.worldSeed">World Seed</div>
+        <button class="field-box" id="seedBtn" type="button">
+          <span class="field-box-val" id="seedValue">7F3A-K9D2</span>
+          <span class="field-box-icon">GEN</span>
+        </button>
+
+        <div class="section-divider"></div>
+
+        <div class="field-label" data-i18n="ui.friendLobby">Friend Lobby</div>
+        <div class="lobby-code" id="lobbyCode">VRDN-4829</div>
+        <button class="show-all-btn" id="copyLobbyBtn" data-i18n="ui.copyCode">Copy Code</button>
+      </div>
+
+      <div class="panel" style="padding:10px 12px">
+        <div class="panel-title" data-i18n="ui.voice">Voice</div>
+        <div class="voice-status">
+          <span data-i18n="ui.voiceConnected">Connected</span>
+          <span class="dot"></span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="bottom-bar">
+      <button class="btn-action primary" id="startBtn" type="button">
+        <span class="btn-corner tl">◆</span>
+        <span class="btn-corner tr">◆</span>
+        <span class="btn-corner bl">◆</span>
+        <span class="btn-corner br">◆</span>
+        <span data-i18n="ui.startAdventure">Start Adventure</span>
+      </button>
+      <button class="btn-action" id="inviteBtn" type="button">
+        <span class="btn-corner tl">◆</span><span class="btn-corner tr">◆</span>
+        <span class="btn-corner bl">◆</span><span class="btn-corner br">◆</span>
+        <span data-i18n="ui.inviteFriends">+ Invite Friends</span>
+      </button>
+      <button class="btn-action" id="changeHeroBtn" type="button">
+        <span class="btn-corner tl">◆</span><span class="btn-corner tr">◆</span>
+        <span class="btn-corner bl">◆</span><span class="btn-corner br">◆</span>
+        <span data-i18n="ui.changeHero">Change Hero</span>
+      </button>
+      <button class="btn-action" id="settingsBtn" type="button">
+        <span class="btn-corner tl">◆</span><span class="btn-corner tr">◆</span>
+        <span class="btn-corner bl">◆</span><span class="btn-corner br">◆</span>
+        <span data-i18n="ui.backSettings">Back / Settings</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const i18n = {
+      uk: {
+        ui: {
+          brand: 'Circle of Eight',
+          role: 'Роль',
+          skills: 'Навички',
+          stats: 'Характеристики',
+          stageTitle: 'Зберіть загін',
+          stageSubtitle: 'Оберіть героїв і почніть пригоду.',
+          partyDetail: 'Загін',
+          playersConnected: 'Гравців у лобі',
+          difficulty: 'Складність',
+          worldSeed: 'Сід світу',
+          friendLobby: 'Код лобі',
+          copyCode: 'Копіювати код',
+          voice: 'Голос',
+          voiceConnected: 'Підключено',
+          startAdventure: 'Почати пригоду',
+          inviteFriends: '+ Запросити друзів',
+          changeHero: 'Змінити героя',
+          backSettings: 'Назад / Налаштування',
+          ready: 'Готовий',
+          picking: 'Обирає',
+          join: 'Приєднатись',
+          emptySlot: 'Порожній слот',
+          copied: 'Код лобі скопійовано',
+          generatedSeed: 'Новий сід згенеровано',
+          startBlocked: 'Не всі зайняті герої готові',
+          adventureReady: 'Лобі готове до старту',
+          invited: 'Запрошення надіслано',
+          heroChanged: 'Можна переключити активного героя',
+          settingsOpen: 'Відкрити меню налаштувань',
+          selectHero: 'Вибрано героя',
+          noSkills: 'Навички для цього героя ще не описані.',
+          player: 'Гравець'
+        },
+        classes: {
+          warrior: 'Воїн',
+          ranger: 'Рейнджер',
+          mage: 'Маг',
+          healer: 'Цілитель',
+          rogue: 'Розбійник',
+          vanguard: 'Бастіон',
+          battle_caster: 'Бойовий маг',
+          firebrand: 'Палій',
+          sharpshooter: 'Стрілець',
+          bruiser: 'Штурмовик',
+          support: 'Підтримка',
+          trickster: 'Хаосник',
+          scholar: 'Аналітик',
+          brawler: 'Боєць',
+          adventurer: 'Авантюрист',
+          blacksmith: 'Кузнець',
+          alchemist: 'Алхімік',
+          hunter: 'Мисливець',
+          woodcutter: 'Дроворуб',
+          herbalist: 'Травник',
+          stablehand: 'Підпасок',
+          pathfinder: 'Слідопит',
+          farmer: 'Фермер',
+          monk: 'Монах'
+        },
+        roles: {
+          ariadne: 'Сильний передній боєць, що тримає стрій і захищає союзників щитом та клинком.',
+          elara: 'Швидка мисливиця, що знищує ворогів на відстані точними пострілами й лісовою магією.',
+          kaius: 'Майстер аркани, який накриває поле бою нищівними закляттями.',
+          healer: 'Божественний захисник, який лікує союзників і не дає загону впасти.',
+          rogue: 'Тіньовий мисливець, що б’є в слабкі місця і зникає до відповіді ворога.'
+        },
+        difficulty: {
+          story: 'Сюжетна',
+          adventurer: 'Мандрівник',
+          heroic: 'Героїчна',
+          legend: 'Легенда',
+          nightmare: 'Нічний жах'
+        }
+      },
+      en: {
+        ui: {
+          brand: 'Circle of Eight',
+          role: 'Role',
+          skills: 'Skills',
+          stats: 'Stats',
+          stageTitle: 'Gather the Party',
+          stageSubtitle: 'Choose heroes and begin the expedition.',
+          partyDetail: 'Party Detail',
+          playersConnected: 'Players Connected',
+          difficulty: 'Difficulty',
+          worldSeed: 'World Seed',
+          friendLobby: 'Friend Lobby',
+          copyCode: 'Copy Code',
+          voice: 'Voice',
+          voiceConnected: 'Connected',
+          startAdventure: 'Start Adventure',
+          inviteFriends: '+ Invite Friends',
+          changeHero: 'Change Hero',
+          backSettings: 'Back / Settings',
+          ready: 'Ready',
+          picking: 'Picking',
+          join: 'Join',
+          emptySlot: 'Empty Slot',
+          copied: 'Lobby code copied',
+          generatedSeed: 'New seed generated',
+          startBlocked: 'Not all occupied heroes are ready',
+          adventureReady: 'Lobby is ready to start',
+          invited: 'Invite was sent',
+          heroChanged: 'You can switch the active hero',
+          settingsOpen: 'Open settings menu',
+          selectHero: 'Selected hero',
+          noSkills: 'No skills listed for this hero yet.',
+          player: 'Player'
+        },
+        classes: {
+          warrior: 'Warrior',
+          ranger: 'Ranger',
+          mage: 'Mage',
+          healer: 'Healer',
+          rogue: 'Rogue',
+          vanguard: 'Vanguard',
+          battle_caster: 'Battle Caster',
+          firebrand: 'Firebrand',
+          sharpshooter: 'Sharpshooter',
+          bruiser: 'Bruiser',
+          support: 'Support',
+          trickster: 'Trickster',
+          scholar: 'Scholar',
+          brawler: 'Brawler',
+          adventurer: 'Adventurer',
+          blacksmith: 'Blacksmith',
+          alchemist: 'Alchemist',
+          hunter: 'Hunter',
+          woodcutter: 'Woodcutter',
+          herbalist: 'Herbalist',
+          stablehand: 'Stablehand',
+          pathfinder: 'Pathfinder',
+          farmer: 'Farmer',
+          monk: 'Monk'
+        },
+        roles: {
+          ariadne: 'A steadfast front-line fighter who holds formation and protects allies with shield and blade.',
+          elara: 'A swift hunter who eliminates threats at range through precision and forest magic.',
+          kaius: 'A master of the arcane who devastates the battlefield with overwhelming spells.',
+          healer: 'A divine guardian who restores allies and keeps the party standing.',
+          rogue: 'A shadow operative who strikes weak points and vanishes before retaliation.'
+        },
+        difficulty: {
+          story: 'Story',
+          adventurer: 'Adventurer',
+          heroic: 'Heroic',
+          legend: 'Legend',
+          nightmare: 'Nightmare'
+        }
+      }
+    };
+
+    const difficultyLevels = [
+      { id: 'story', pips: 1 },
+      { id: 'adventurer', pips: 2 },
+      { id: 'heroic', pips: 3 },
+      { id: 'legend', pips: 4 },
+      { id: 'nightmare', pips: 5 }
+    ];
+
+    const spriteConfig = {
+      // fallback/backgrounds (using available files in assets/lobby)
+      stageBackground: 'assets/lobby/menu_background.jpg',
+      mountains: 'assets/lobby/bg_mountains_silhouette.webp',
+      // disable forestDecor by default to avoid doubling the same background
+      forestDecor: '',
+      ground: 'assets/lobby/bg_grass_glow.webp',
+
+      // rune sprite (not present yet) — leave empty to skip
+      runePath: '',
+
+      // pedestal sprite images (use existing lobby_pedestal_* files)
+      pedestalBack: 'assets/lobby/lobby_pedestal_back.png',
+      pedestalFront: 'assets/lobby/lobby_pedestal_front.png'
+    };
+
+    const heroes = [
+      { id: 'sergo', key: 'sergo', clsKey: 'vanguard', name: 'Серго', player: 'P1', playerColor: '#3a80c0', ready: true, hp:34, stats: [34,8,9,4], pos: { bottom: 40, left: 16 }, size: 'lg', assets: { portrait: 'assets/heroes/sergo_portrait.webp', stage: 'assets/heroes/sergo/front.png', stageW:150, stageH:188 } },
+      { id: 'step', key: 'step', clsKey: 'battle_caster', name: 'Степ', player: 'P2', playerColor: '#a040a0', ready: true, hp:24, stats: [24,3,4,6], pos: { bottom: 50, left: 28 }, size: 'md', assets: { portrait: 'assets/heroes/step_portrait.webp', stage: 'assets/heroes/step/front.png', stageW:124, stageH:160 } },
+      { id: 'dasha', key: 'dasha', clsKey: 'firebrand', name: 'Даша', player: 'P3', playerColor: '#5a72d7', ready: true, hp:26, stats: [26,4,5,7], pos: { bottom: 58, left: 40 }, size: 'lg', assets: { portrait: 'assets/heroes/dasha_portrait.webp', stage: 'assets/heroes/dasha/front.png', stageW:156, stageH:194 } },
+      { id: 'kira', key: 'kira', clsKey: 'sharpshooter', name: 'Кіра', player: 'P4', playerColor: '#3aa47d', ready: true, hp:25, stats: [25,5,4,9], pos: { bottom: 46, left: 52 }, size: 'md', assets: { portrait: 'assets/heroes/kira/front.png', stage: 'assets/heroes/kira/front.png', stageW:126, stageH:164 } },
+      { id: 'sasha', key: 'sasha', clsKey: 'bruiser', name: 'Саня', player: null, playerColor: '#7b5670', ready: false, hp:32, stats: [32,9,7,5], pos: { bottom: 30, left: 64 }, size: 'md', assets: { portrait: 'assets/heroes/sasha/front.png', stage: 'assets/heroes/sasha/front.png', stageW:124, stageH:160 } },
+      { id: 'yuliia', key: 'yuliia', clsKey: 'support', name: 'Юля', player: null, playerColor: '#7b5670', ready: false, hp:27, stats: [27,2,5,5], pos: { bottom: 14, left: 28 }, size: 'sm', labelKey: 'join', assets: { portrait: 'assets/heroes/yuliia/front.png', stage: 'assets/heroes/yuliia/front.png' } },
+      { id: 'loz', key: 'loz', clsKey: 'trickster', name: 'Лоз', player: null, playerColor: '#7b5670', ready: false, hp:28, stats: [28,5,5,7], pos: { bottom: 14, left: 42 }, size: 'sm', labelKey: 'emptySlot', assets: { portrait: 'assets/heroes/loz_portrait.webp', stage: 'assets/heroes/loz_idle.webp' } },
+      { id: 'melman', key: 'melman', clsKey: 'scholar', name: 'Мелман', player: null, playerColor: '#7b5670', ready: false, hp:26, stats: [26,2,4,4], pos: { bottom: 14, left: 58 }, size: 'sm', labelKey: 'emptySlot', assets: { portrait: 'assets/heroes/melman_portrait.webp', stage: 'assets/heroes/melman_idle.webp' } },
+      { id: 'troks', key: 'troks', clsKey: 'brawler', name: 'Трокс', player: null, playerColor: '#7b5670', ready: false, hp:33, stats: [33,10,7,6], pos: { bottom: 14, left: 72 }, size: 'sm', labelKey: 'join', assets: { portrait: 'assets/heroes/troks_portrait.webp', stage: 'assets/heroes/troks/front.png' } },
+      { id: 'igor', key: 'igor', clsKey: 'adventurer', name: 'Ігорь', player: null, playerColor: '#7b5670', ready: false, hp:29, stats: [29,6,6,6], pos: { bottom: 30, left: 86 }, size: 'sm', assets: { portrait: 'assets/heroes/igor_portrait.webp', stage: 'assets/heroes/igor_idle.webp' } }
+    ];
+
+    const pedestalSizes = {
+      lg: { tw: 132, th: 24, mw: 100, mh: 46, bw: 126, bh: 16, glowW: 176, glowH: 34 },
+      md: { tw: 108, th: 20, mw: 80, mh: 36, bw: 101, bh: 13, glowW: 144, glowH: 28 },
+      sm: { tw: 112, th: 15, mw: 88, mh: 26, bw: 108, bh: 9, glowW: 120, glowH: 18 }
+    };
+
+    const statColors = [
+      'linear-gradient(90deg,#e04040,#f07070)',
+      'linear-gradient(90deg,#e09030,#f0b060)',
+      'linear-gradient(90deg,#4090e0,#70b0f0)',
+      'linear-gradient(90deg,#9050d0,#b080e8)'
+    ];
+
+    const state = {
+      lang: 'uk',
+      selectedHeroIndex: 0,
+      difficulty: 'heroic',
+      lobbyCode: 'VRDN-4829',
+      worldSeed: '7F3A-K9D2'
+    };
+
+    function t(path) {
+      return path.split('.').reduce((acc, key) => acc?.[key], i18n[state.lang]) || path;
+    }
+
+    function setBackgroundAssets() {
+      setBgIfExists('bgImage', spriteConfig.stageBackground);
+      setBgIfExists('mountainsImage', spriteConfig.mountains);
+      setBgIfExists('forestImage', spriteConfig.forestDecor);
+      setBgIfExists('groundImage', spriteConfig.ground);
+      setBgIfExists('runeImage', spriteConfig.runePath);
+    }
+
+    function setBgIfExists(id, src) {
+      const el = document.getElementById(id);
+      if (!src) return;
+      const img = new Image();
+      img.onload = () => {
+        el.style.backgroundImage = `url('${src}')`;
+      };
+      img.onerror = () => {
+        el.style.backgroundImage = 'none';
+      };
+      img.src = src;
+    }
+
+    function preloadImages(urls = []) {
+      return Promise.all(urls.filter(Boolean).map(u => new Promise(res => {
+        const i = new Image();
+        i.onload = i.onerror = () => res(u);
+        i.src = u;
+      })));
+    }
+
+    const HERO_PLACEHOLDER = 'assets/ui/icon-placeholder.svg';
+
+    function getHeroPortraitSrc(hero) {
+      if (!hero?.id) return HERO_PLACEHOLDER;
+      return `assets/heroes/${hero.id}/front.png`;
+    }
+
+    function getHeroStageSrc(hero) {
+      return getHeroPortraitSrc(hero);
+    }
+
+    heroes.forEach((hero) => {
+      if (!hero.assets) return;
+      hero.assets.portrait = getHeroPortraitSrc(hero);
+      hero.assets.stage = getHeroStageSrc(hero);
+    });
+
+    function preloadKeySprites() {
+      const urls = [];
+      if (spriteConfig.pedestalBack) urls.push(spriteConfig.pedestalBack);
+      if (spriteConfig.pedestalFront) urls.push(spriteConfig.pedestalFront);
+      heroes.forEach(h => {
+        urls.push(getHeroPortraitSrc(h));
+        urls.push(getHeroStageSrc(h));
+      });
+      return preloadImages(urls);
+    }
+
+    function buildDifficultyOptions() {
+      const select = document.getElementById('difficultySelect');
+      select.innerHTML = difficultyLevels.map(level => `
+        <option value="${level.id}" ${level.id === state.difficulty ? 'selected' : ''}>${t(`difficulty.${level.id}`)}</option>
+      `).join('');
+    }
+
+    function renderDifficultyPips() {
+      const wrap = document.getElementById('difficultyPips');
+      const level = difficultyLevels.find(d => d.id === state.difficulty) || difficultyLevels[2];
+      wrap.innerHTML = Array.from({ length: 5 }, (_, i) => `<div class="pip ${i < level.pips ? 'active' : ''}"></div>`).join('');
+    }
+
+    function localizeStaticText() {
+      document.documentElement.lang = state.lang;
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.dataset.i18n;
+        el.textContent = t(key);
+      });
+      buildDifficultyOptions();
+      renderDifficultyPips();
+    }
+
+    function countConnectedPlayers() {
+      return heroes.filter(h => h.name || h.key).filter(h => h.player).length;
+    }
+
+    function getHeroDisplayName(hero) {
+      if (!hero) return '';
+      if (hero.name) return hero.name;
+      if (hero.key) return hero.key.charAt(0).toUpperCase() + hero.key.slice(1);
+      return '';
+    }
+
+    function getHeroClass(hero) {
+      return hero?.clsKey ? t(`classes.${hero.clsKey}`) : '';
+    }
+
+    function getHeroRole(hero) {
+      return hero?.key ? t(`roles.${hero.key}`) : '';
+    }
+
+    function isOccupied(hero) {
+      return !!(hero && (hero.key || hero.name));
+    }
+
+    function getStartReadyState() {
+      return heroes.filter(h => h.player).every(h => h.ready);
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => toast.classList.remove('show'), 1800);
+    }
+
+    function makePedestalHTML(hero, index) {
+      const size = pedestalSizes[hero.size || 'md'];
+      const isSelected = index === state.selectedHeroIndex;
+      const occupied = isOccupied(hero);
+      const wrapStyle = `left:${hero.pos.left}%; bottom:${hero.pos.bottom}%;`;
+      const commonGlow = `<div class="pedestal-glow" style="width:${size.glowW}px;height:${size.glowH}px"></div>`;
+
+      if (!occupied) {
+        const label = t(`ui.${hero.labelKey || 'emptySlot'}`);
+        return `
+          <button class="pedestal-wrapper pedestal-size-${hero.size || 'md'} empty-slot" type="button" style="${wrapStyle}" data-index="${index}" aria-label="${label}">
+            <div class="pedestal-stack">
+              ${commonGlow}
+              ${spriteConfig.pedestalBack ? `<img class="pedestal-back-sprite" src="${spriteConfig.pedestalBack}" alt="" style="width:${Math.max(size.bw + 40, size.tw + 30)}px">` : ''}
+              <div class="empty-slot-label">${label}</div>
+              ${spriteConfig.pedestalFront ? `<img class="pedestal-front-sprite" src="${spriteConfig.pedestalFront}" alt="" style="width:${Math.max(size.bw + 40, size.tw + 30)}px">` : ''}
+            </div>
+          </button>
+        `;
+      }
+
+      const heroName = getHeroDisplayName(hero);
+      const className = getHeroClass(hero);
+      const readyText = hero.ready ? t('ui.ready') : t('ui.picking');
+      const readyClass = hero.ready ? 'rdy' : 'waiting';
+      const playerBadge = hero.player
+        ? `<div class="player-badge" style="background:${hero.playerColor || '#577'}">${hero.player}</div>`
+        : '';
+
+      const heroStageSrc = getHeroStageSrc(hero);
+      const heroStage = heroStageSrc
+        ? `<img class="hero-stage-sprite" src="${heroStageSrc}" alt="${heroName}" style="width:${hero.assets.stageW || 128}px;height:${hero.assets.stageH || 160}px" onerror="this.remove();this.parentElement.insertAdjacentHTML('beforeend','<div class=&quot;hero-stage-fallback&quot;></div>')">`
+        : `<div class="hero-stage-fallback"></div>`;
+
+      return `
+        <button class="pedestal-wrapper ${isSelected ? 'selected' : ''} pedestal-size-${hero.size || 'md'}" type="button" style="${wrapStyle}" data-index="${index}" aria-label="${heroName}">
+          ${isSelected ? '<div class="magic-beam"></div>' : ''}
+          <div class="hero-label">
+            <span class="hero-label-name">${heroName}</span>
+            <span class="hero-label-sub">${className}</span>
+            <span class="ready-tag ${readyClass}">${readyText}</span>
+          </div>
+
+          <div class="pedestal-stack">
+            ${commonGlow}
+            ${spriteConfig.pedestalBack ? `<img class="pedestal-back-sprite" src="${spriteConfig.pedestalBack}" alt="" style="width:${Math.max(size.bw + 40, size.tw + 30)}px">` : ''}
+
+            <div class="hero-stage">${heroStage}${playerBadge}</div>
+
+            ${isSelected ? `<div class="rune-aura" style="width:${size.tw + 16}px;height:20px"></div>` : ''}
+
+            ${spriteConfig.pedestalFront ? `<img class="pedestal-front-sprite" src="${spriteConfig.pedestalFront}" alt="" style="width:${Math.max(size.bw + 40, size.tw + 30)}px">` : ''}
+          </div>
+        </button>
+      `;
+    }
+
+    /* renderPedestalSpriteLayers removed — using direct sprite <img> in templates */
+
+    function renderPedestals() {
+      const area = document.getElementById('pedestals-area');
+      area.innerHTML = heroes.map((hero, index) => makePedestalHTML(hero, index)).join('');
+      area.querySelectorAll('.pedestal-wrapper').forEach(btn => {
+        btn.addEventListener('click', () => selectHero(Number(btn.dataset.index)));
+      });
+    }
+
+    function updateLeftPanel() {
+      const hero = heroes[state.selectedHeroIndex];
+      if (!isOccupied(hero)) return;
+
+      document.getElementById('lp-name').textContent = getHeroDisplayName(hero);
+      document.getElementById('lp-class').textContent = getHeroClass(hero);
+      document.getElementById('lp-role').textContent = getHeroRole(hero);
+
+      const badge = document.getElementById('lp-badge');
+      badge.textContent = hero.player || '—';
+      badge.style.background = hero.playerColor
+        ? `linear-gradient(135deg, ${hero.playerColor}, ${hero.playerColor}bb)`
+        : 'linear-gradient(135deg, rgba(90,110,130,.7), rgba(70,90,110,.9))';
+
+      ['st-hp', 'st-atk', 'st-def', 'st-mag'].forEach((id, index) => {
+        const el = document.getElementById(id);
+        el.style.width = `${hero.stats[index]}%`;
+        el.style.background = statColors[index];
+      });
+
+      const portrait = document.getElementById('lp-portrait');
+      const fallback = document.getElementById('lp-icon');
+      const portraitSrc = getHeroPortraitSrc(hero);
+      if (portraitSrc) {
+        portrait.src = portraitSrc;
+        portrait.alt = getHeroDisplayName(hero);
+        portrait.classList.remove('hidden');
+        fallback.classList.add('hidden');
+        portrait.onerror = () => {
+          portrait.classList.add('hidden');
+          fallback.classList.remove('hidden');
+          fallback.innerHTML = '<div class="hero-silhouette"></div>';
+        };
+      } else {
+        portrait.classList.add('hidden');
+        fallback.classList.remove('hidden');
+        fallback.innerHTML = '<div class="hero-silhouette"></div>';
+      }
+
+      document.getElementById('player-count').textContent = String(countConnectedPlayers());
+      document.getElementById('lobbyCode').textContent = state.lobbyCode;
+      document.getElementById('seedValue').textContent = state.worldSeed;
+      document.getElementById('startBtn').disabled = !getStartReadyState();
+    }
+
+    function selectHero(index) {
+      const hero = heroes[index];
+      if (!isOccupied(hero)) return;
+      state.selectedHeroIndex = index;
+      renderPedestals();
+      updateLeftPanel();
+      showToast(`${t('ui.selectHero')}: ${getHeroDisplayName(hero)}`);
+    }
+
+    function randomSeed() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const group = len => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+      return `${group(4)}-${group(4)}`;
+    }
+
+    function applyLanguage(lang) {
+      state.lang = lang;
+      document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.lang === lang));
+      localizeStaticText();
+      renderPedestals();
+      updateLeftPanel();
+    }
+
+    function createStars() {
+      const starsEl = document.getElementById('stars');
+      starsEl.innerHTML = '';
+      for (let i = 0; i < 90; i++) {
+        const star = document.createElement('div');
+        star.className = 'star';
+        const size = Math.random() * 2.5 + .5;
+        star.style.cssText = `width:${size}px;height:${size}px;left:${Math.random()*100}%;top:${Math.random()*80}%;animation-delay:${Math.random()*5}s;animation-duration:${2 + Math.random()*4}s`;
+        starsEl.appendChild(star);
+      }
+    }
+
+    function bindUI() {
+      document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.addEventListener('click', () => applyLanguage(btn.dataset.lang));
+      });
+
+      document.getElementById('difficultySelect').addEventListener('change', e => {
+        state.difficulty = e.target.value;
+        renderDifficultyPips();
+      });
+
+      document.getElementById('seedBtn').addEventListener('click', () => {
+        state.worldSeed = randomSeed();
+        document.getElementById('seedValue').textContent = state.worldSeed;
+        showToast(t('ui.generatedSeed'));
+      });
+
+      document.getElementById('copyLobbyBtn').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(state.lobbyCode);
+          showToast(t('ui.copied'));
+        } catch {
+          showToast(state.lobbyCode);
+        }
+      });
+
+      document.getElementById('startBtn').addEventListener('click', () => {
+        if (!getStartReadyState()) {
+          showToast(t('ui.startBlocked'));
+          return;
+        }
+        showToast(t('ui.adventureReady'));
+      });
+
+      document.getElementById('inviteBtn').addEventListener('click', () => showToast(t('ui.invited')));
+      document.getElementById('changeHeroBtn').addEventListener('click', () => showToast(t('ui.heroChanged')));
+      document.getElementById('settingsBtn').addEventListener('click', () => showToast(t('ui.settingsOpen')));
+    }
+
+    function animateStartButton() {
+      const btn = document.getElementById('startBtn');
+      if (animateStartButton._intervalId) return; // already running
+      let timer = 0;
+      animateStartButton._intervalId = setInterval(() => {
+        timer += .04;
+        const s = 0.2 + Math.sin(timer) * 0.12;
+        btn.style.boxShadow = `0 6px ${20 + Math.sin(timer)*8}px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.9), 0 0 ${14 + Math.sin(timer)*8}px rgba(60,200,140,${s})`;
+      }, 40);
+    }
+
+    async function init() {
+      const veil = document.getElementById('loadingVeil');
+      if (veil) veil.style.display = 'grid';
+      await preloadKeySprites();
+      if (veil) veil.style.display = 'none';
+      setBackgroundAssets();
+      createStars();
+      bindUI();
+      localizeStaticText();
+      renderPedestals();
+      updateLeftPanel();
+      animateStartButton();
+    }
+
+    const roster = [
+      {
+        id: 'sergo',
+        name: 'Серго',
+        cls: 'Кузнець',
+        classKey: 'blacksmith',
+        summary: {
+          uk: 'Танк першої лінії, який тримає удар щитом і стабілізує довгі бої.',
+          en: 'A front-line tank who absorbs pressure with a shield and stabilizes long fights.'
+        },
+        skills: [
+          {
+            id: 'steadfast',
+            nameUk: 'Сталість',
+            nameEn: 'Steadfast',
+            descUk: 'Якщо екіпіровано щит, має шанс повністю скасувати вхідний удар.',
+            descEn: 'Has a chance to negate incoming damage entirely while a shield is equipped.'
+          }
+        ],
+        ready: true,
+        player: 'P1',
+        playerColor: '#4e8fe0',
+        stats: [86, 58, 92, 28],
+        portrait: 'assets/heroes/sergo/front.png',
+        stage: 'assets/heroes/sergo/front.png',
+        stageScale: 1,
+        stageBottom: -34,
+        stageShiftX: -2
+      },
+      {
+        id: 'step',
+        name: 'Степ',
+        cls: 'Вчений',
+        classKey: 'scholar',
+        summary: {
+          uk: 'Головний магічний дамагер. Потребує прикриття, але розриває ворожі лінії закляттями.',
+          en: 'The primary spell damage dealer. Needs protection, but tears through enemy lines with arcane pressure.'
+        },
+        skills: [
+          {
+            id: 'refocus',
+            nameUk: 'Перефокусування',
+            nameEn: 'Refocus',
+            descUk: 'Наприкінці ходу на землі або в підземеллі може відновити 1 Focus.',
+            descEn: 'Can restore 1 Focus at the end of a turn while standing on land or in a dungeon.'
+          },
+          {
+            id: 'find_scroll',
+            nameUk: 'Знайти сувій',
+            nameEn: 'Find Scroll',
+            descUk: 'На землі або в підземеллі може знайти випадковий сувій.',
+            descEn: 'Can discover a random scroll while traveling on land or through a dungeon.'
+          }
+        ],
+        ready: true,
+        player: 'P2',
+        playerColor: '#b058d9',
+        stats: [46, 96, 34, 100],
+        portrait: 'assets/heroes/step/front.png',
+        stage: 'assets/heroes/step/front.png',
+        stageScale: 0.82,
+        stageBottom: -60,
+        stageShiftX: -6
+      },
+      {
+        id: 'dasha',
+        name: 'Даша',
+        cls: 'Алхімік',
+        classKey: 'alchemist',
+        summary: {
+          uk: 'Тримає тил, варить витратники і рятує команду, коли бій починає сипатися.',
+          en: 'A back-line alchemist who stocks consumables and bails the party out when fights start collapsing.'
+        },
+        skills: [
+          {
+            id: 'smoke_flee',
+            nameUk: 'Димова завіса',
+            nameEn: 'Smoke Flee',
+            descUk: 'Втеча з бою вимагає лише одну перевірку й допомагає пережити безнадійну сцену.',
+            descEn: 'Escaping combat only takes one check, giving the team a way out of doomed encounters.'
+          },
+          {
+            id: 'make_potion',
+            nameUk: 'Зварити зілля',
+            nameEn: 'Make Potion',
+            descUk: 'Наприкінці ходу на землі або в підземеллі може створити випадкове зілля.',
+            descEn: 'Can brew a random potion at the end of a turn on land or in a dungeon.'
+          }
+        ],
+        ready: true,
+        player: 'P3',
+        playerColor: '#7c7cff',
+        stats: [52, 76, 38, 82],
+        portrait: 'assets/heroes/dasha/front.png',
+        stage: 'assets/heroes/dasha/front.png',
+        stageScale: 1.06,
+        stageBottom: -54,
+        stageShiftX: -11
+      },
+      {
+        id: 'kira',
+        name: 'Кіра',
+        cls: 'Мисливиця',
+        classKey: 'hunter',
+        summary: {
+          uk: 'Лучниця другої лінії, яка задає темп походу засідками, скритністю і точними пострілами.',
+          en: 'A second-line archer who controls campaign tempo through ambushes, stealth, and precise shots.'
+        },
+        skills: [
+          {
+            id: 'elite_sneak',
+            nameUk: 'Елітне прокрадання',
+            nameEn: 'Elite Sneak',
+            descUk: 'Значно легше обходить ворогів і табори без відкритого бою.',
+            descEn: 'Makes it far easier to bypass roaming enemies and camps without triggering a fight.'
+          },
+          {
+            id: 'elite_ambush',
+            nameUk: 'Елітна засідка',
+            nameEn: 'Elite Ambush',
+            descUk: 'Починає сутички з переваги й стабільно відкриває битву першим ударом.',
+            descEn: 'Lets the party open encounters from ambush with a much more reliable advantage.'
+          },
+          {
+            id: 'called_shot',
+            nameUk: 'Прицільний постріл',
+            nameEn: 'Called Shot',
+            descUk: 'З луком частіше вибиває ідеальну атаку й максимізує шкоду по пріоритетній цілі.',
+            descEn: 'Increases the chance of a perfect attack with bows and improves burst on priority targets.'
+          },
+          {
+            id: 'energy_boost',
+            nameUk: 'Приплив енергії',
+            nameEn: 'Energy Boost',
+            descUk: 'Наприкінці раунду може отримати додаткові очки руху на карті.',
+            descEn: 'Can gain extra movement points on the world map at the end of a round.'
+          }
+        ],
+        ready: true,
+        player: 'P4',
+        playerColor: '#53c2a1',
+        stats: [54, 88, 42, 56],
+        portrait: 'assets/heroes/kira/front.png',
+        stage: 'assets/heroes/kira/front.png'
+      },
+      {
+        id: 'sasha',
+        name: 'Саня',
+        cls: 'Дроворуб',
+        classKey: 'woodcutter',
+        summary: {
+          uk: 'Дворучний рубака першої лінії, який карає ідеальні атаки сплешем.',
+          en: 'A first-line two-handed cleaver who turns perfect hits into sweeping area damage.'
+        },
+        skills: [
+          {
+            id: 'justice',
+            nameUk: 'Правосуддя',
+            nameEn: 'Justice',
+            descUk: 'Ідеальна атака дворучною сокирою може перетворитися на удар по площі.',
+            descEn: 'A perfect attack with a two-handed axe can spill into an area hit.'
+          }
+        ],
+        ready: false,
+        player: null,
+        playerColor: '#c98a3d',
+        stats: [74, 90, 68, 24],
+        portrait: 'assets/heroes/sasha/front.png',
+        stage: 'assets/heroes/sasha/front.png'
+      },
+      {
+        id: 'yuliia',
+        name: 'Юля',
+        cls: 'Травниця',
+        classKey: 'herbalist',
+        summary: {
+          uk: 'Лікарка походу, яка одночасно підтримує команду в бою й економить ресурси на карті.',
+          en: 'The party healer who keeps allies standing in combat and saves resources while traveling.'
+        },
+        skills: [
+          {
+            id: 'party_heal',
+            nameUk: 'Командне лікування',
+            nameEn: 'Party Heal',
+            descUk: 'Лікує союзників поруч і працює як у бою, так і на світовій мапі.',
+            descEn: 'Heals nearby allies and works both in combat and on the world map.'
+          },
+          {
+            id: 'find_herb',
+            nameUk: 'Знайти трави',
+            nameEn: 'Find Herb',
+            descUk: 'На землі або в підземеллі може знаходити трави для довшого автономного походу.',
+            descEn: 'Can gather herbs on land or in dungeons to keep the expedition self-sustaining.'
+          }
+        ],
+        ready: false,
+        player: null,
+        playerColor: '#d28fc5',
+        stats: [56, 42, 48, 86],
+        portrait: 'assets/heroes/yuliia/front.png',
+        stage: 'assets/heroes/yuliia/front.png'
+      },
+      {
+        id: 'loz',
+        name: 'Лоз',
+        cls: 'Підпасок',
+        classKey: 'stablehand',
+        summary: {
+          uk: 'Ризиковий фронтлайн-дуелянт, який розганяється, якщо грає майже без запасу Focus.',
+          en: 'A risky front-line duelist who spikes hard when fighting with almost no Focus left.'
+        },
+        skills: [
+          {
+            id: 'hard_work',
+            nameUk: 'Важка праця',
+            nameEn: 'Hard Work',
+            descUk: 'Коли витрачає останній Focus у бою, одразу отримує ще один хід.',
+            descEn: 'Gets an immediate extra turn after spending the last Focus point in combat.'
+          }
+        ],
+        ready: false,
+        player: null,
+        playerColor: '#7d6ad8',
+        stats: [58, 84, 44, 18],
+        portrait: HERO_PLACEHOLDER,
+        stage: HERO_PLACEHOLDER
+      },
+      {
+        id: 'melman',
+        name: 'Мелман',
+        cls: 'Слідопит',
+        classKey: 'pathfinder',
+        summary: {
+          uk: 'Розвідник, який відкриває туман війни та підказує, що чекає за наступними дверима.',
+          en: 'A scouting specialist who reveals fog of war and previews what waits behind the next dungeon door.'
+        },
+        skills: [
+          {
+            id: 'survey',
+            nameUk: 'Огляд місцевості',
+            nameEn: 'Survey',
+            descUk: 'Може помічати точки інтересу ще крізь туман війни на карті світу.',
+            descEn: 'Can spot points of interest through the fog of war on the world map.'
+          },
+          {
+            id: 'scout',
+            nameUk: 'Розвідка',
+            nameEn: 'Scout',
+            descUk: 'Дає шанс побачити вміст наступної кімнати підземелля ще до входу.',
+            descEn: 'Can reveal the contents of the next dungeon room before the party enters it.'
+          }
+        ],
+        ready: false,
+        player: null,
+        playerColor: '#5ea6d6',
+        stats: [50, 58, 38, 66],
+        portrait: HERO_PLACEHOLDER,
+        stage: HERO_PLACEHOLDER
+      },
+      {
+        id: 'troks',
+        name: 'Трокс',
+        cls: 'Фермер',
+        classKey: 'farmer',
+        summary: {
+          uk: 'Міцний фронтлайнер, який прикриває тил опудалом і стабільно тримає середній тиск.',
+          en: 'A sturdy front-liner who protects the back row with a scarecrow and sustains steady pressure.'
+        },
+        skills: [
+          {
+            id: 'build_scarecrow',
+            nameUk: 'Поставити опудало',
+            nameEn: 'Build Scarecrow',
+            descUk: 'Створює міцну приманку на першій лінії та прикриває вразливих союзників позаду.',
+            descEn: 'Places a durable decoy on the front line to shield vulnerable allies behind it.'
+          }
+        ],
+        ready: false,
+        player: null,
+        playerColor: '#9c5d4d',
+        stats: [80, 78, 74, 22],
+        portrait: 'assets/heroes/troks/front.png',
+        stage: 'assets/heroes/troks/front.png',
+        stageScale: 1.01,
+        stageBottom: -59,
+        stageShiftX: -7
+      },
+      {
+        id: 'igor',
+        name: 'Ігор',
+        cls: 'Монах',
+        classKey: 'monk',
+        summary: {
+          uk: 'Гібридний фронтлайнер, який поєднує ближній бій, магію і бафи від алкоголю.',
+          en: 'A hybrid front-liner who mixes melee, magic, and alcohol-driven team buffs.'
+        },
+        skills: [
+          {
+            id: 'cheers',
+            nameUk: 'Тост',
+            nameEn: 'Cheers',
+            descUk: 'Позитивні ефекти алкоголю можуть поширюватися на союзників поруч.',
+            descEn: 'Positive alcohol effects can spread to nearby allies.'
+          },
+          {
+            id: 'find_alcohol',
+            nameUk: 'Знайти алкоголь',
+            nameEn: 'Find Alcohol',
+            descUk: 'На землі або в підземеллі може знайти пляшку для майбутніх бафів.',
+            descEn: 'Can discover alcohol on land or in dungeons for future buff turns.'
+          },
+          {
+            id: 'iron_belly',
+            nameUk: 'Залізний шлунок',
+            nameEn: 'Iron Belly',
+            descUk: 'Ігнорує негативні ефекти випивки і дозволяє пити безпечніше за інших.',
+            descEn: 'Ignores the negative effects of alcohol and can drink far more safely than other classes.'
+          }
+        ],
+        ready: false,
+        player: null,
+        playerColor: '#9aa66a',
+        stats: [72, 76, 64, 70],
+        portrait: HERO_PLACEHOLDER,
+        stage: HERO_PLACEHOLDER
+      }
+    ];
+
+    roster.forEach((hero) => {
+      hero.portrait = getHeroPortraitSrc(hero);
+      hero.stage = getHeroStageSrc(hero);
+    });
+
+    const partySlots = [
+      { slotId: 0, rosterIndex: 0, playerLabel: 'P1', ready: true },
+      { slotId: 1, rosterIndex: 1, playerLabel: 'P2', ready: true },
+      { slotId: 2, rosterIndex: 2, playerLabel: 'P3', ready: true },
+      { slotId: 3, rosterIndex: 3, playerLabel: 'P4', ready: true }
+    ];
+
+    let selectedSlot = 0;
+
+    function preloadKeySprites() {
+      const urls = [];
+      roster.forEach(hero => {
+        urls.push(getHeroPortraitSrc(hero));
+        urls.push(getHeroStageSrc(hero));
+      });
+      return preloadImages(urls);
+    }
+
+    function countConnectedPlayers() {
+      return partySlots.filter(slot => slot.playerLabel).length;
+    }
+
+    function getHeroDisplayName(hero) {
+      return hero?.name || '';
+    }
+
+    function getHeroClass(hero) {
+      if (!hero) return '';
+      if (state.lang === 'uk') return hero.cls;
+      return hero.classKey ? t(`classes.${hero.classKey}`) : hero.cls;
+    }
+
+    function getHeroRole(hero) {
+      if (!hero?.summary) return '';
+      return hero.summary[state.lang] || hero.summary.uk || hero.summary.en || '';
+    }
+
+    function renderHeroSkills(hero) {
+      const wrap = document.getElementById('lp-skills');
+      if (!wrap) return;
+
+      const skills = Array.isArray(hero?.skills) ? hero.skills : [];
+      if (!skills.length) {
+        wrap.innerHTML = `<div class="skill-item"><div class="skill-desc">${t('ui.noSkills')}</div></div>`;
+        return;
+      }
+
+      wrap.innerHTML = skills.map((skill) => `
+        <div class="skill-item">
+          <span class="skill-name">${state.lang === 'uk' ? skill.nameUk : skill.nameEn}</span>
+          <div class="skill-desc">${state.lang === 'uk' ? skill.descUk : skill.descEn}</div>
+        </div>
+      `).join('');
+    }
+
+    function getPartyHero(slot) {
+      return roster[slot.rosterIndex];
+    }
+
+    function getStartReadyState() {
+      return partySlots.length > 0 && partySlots.every(slot => Boolean(slot.ready));
+    }
+
+    function getHeroViews(hero) {
+      if (hero?.id) {
+        return {
+          front: `assets/heroes/${hero.id}/front.png`,
+          back: `assets/heroes/${hero.id}/back.png`,
+          side: `assets/heroes/${hero.id}/side.png`
+        };
+      }
+
+      const fallback = getHeroStageSrc(hero);
+      return {
+        front: fallback,
+        back: fallback,
+        side: fallback
+      };
+    }
+
+    function isHeroTaken(rosterIndex, exceptSlotIndex = -1) {
+      return partySlots.some((slot, index) => index !== exceptSlotIndex && slot.rosterIndex === rosterIndex);
+    }
+
+    function toggleSlotReady(slotIndex) {
+      const slot = partySlots[slotIndex];
+      if (!slot) return;
+      slot.ready = !slot.ready;
+      selectedSlot = slotIndex;
+      renderPartySelect();
+      updateLeftPanelFromSlot(slotIndex);
+    }
+
+    function buildLobbyStartPayload() {
+      return {
+        seed: state.worldSeed,
+        difficulty: state.difficulty,
+        lobbyCode: state.lobbyCode,
+        party: partySlots.map(slot => {
+          const hero = getPartyHero(slot);
+          return {
+            slotId: slot.slotId,
+            playerLabel: slot.playerLabel,
+            playerColor: hero.playerColor || '#6d7f8a',
+            ready: slot.ready,
+            heroId: hero.id,
+            name: hero.name,
+            cls: getHeroClass(hero),
+            classKey: hero.classKey || null,
+            summary: hero.summary ? structuredClone(hero.summary) : null,
+            skills: hero.skills ? structuredClone(hero.skills) : [],
+            stats: [...hero.stats],
+            hp: hero.stats[0],
+            portrait: getHeroPortraitSrc(hero),
+            views: getHeroViews(hero),
+            stageScale: hero.stageScale ?? 1
+          };
+        }),
+      };
+    }
+
+    function cycleHero(slotIndex, dir) {
+      const slot = partySlots[slotIndex];
+      const total = roster.length;
+      selectedSlot = slotIndex;
+      let nextIndex = slot.rosterIndex;
+      let guard = 0;
+      do {
+        nextIndex = (nextIndex + dir + total) % total;
+        guard += 1;
+      } while (guard < total && isHeroTaken(nextIndex, slotIndex));
+      slot.rosterIndex = nextIndex;
+      slot.ready = false;
+      renderPartySelect();
+      updateLeftPanelFromSlot(slotIndex);
+    }
+
+    function renderPartySelect() {
+      const root = document.getElementById('partySelectGrid');
+      if (!root) return;
+
+      root.innerHTML = partySlots.map((slot, index) => {
+        const hero = getPartyHero(slot);
+        const statusClass = slot.ready ? 'ready' : 'picking';
+        const statusText = slot.ready ? t('ui.ready') : (state.lang === 'uk' ? 'НЕ ГОТОВИЙ' : 'NOT READY');
+        const readyButtonText = slot.ready ? t('ui.ready') : (state.lang === 'uk' ? 'ГОТОВО' : 'MARK READY');
+        const playerColor = hero.playerColor || '#6d7f8a';
+        const stageScale = (hero.stageScale ?? 1) * 1.5;
+        const stageBottom = Math.round((hero.stageBottom ?? 0) * 0.3);
+
+        return `
+          <div class="party-card ${index === selectedSlot ? 'selected' : ''}" data-slot="${index}">
+            <div class="party-card-inner">
+              <div class="party-head">
+                <div class="party-name">${hero.name}</div>
+                <div class="party-class">${getHeroClass(hero)}</div>
+                <div class="party-status ${statusClass}">${statusText}</div>
+                <button class="party-ready-btn ${slot.ready ? 'ready' : 'waiting'}" type="button" onclick="toggleSlotReady(${index}); event.stopPropagation();">${readyButtonText}</button>
+              </div>
+
+              <div class="party-stage">
+                <img
+                  class="party-card-sprite"
+                  style="--hero-scale:${stageScale}; --hero-bottom:${stageBottom}px; --hero-shift:${hero.stageShiftX ?? 0}px"
+                  src="${getHeroStageSrc(hero)}"
+                  alt="${hero.name}"
+                  onerror="this.classList.add('is-hidden'); this.nextElementSibling.classList.remove('is-hidden');"
+                >
+                <div class="party-card-fallback is-hidden" style="--hero-bottom:${stageBottom}px; --hero-shift:${hero.stageShiftX ?? 0}px"></div>
+              </div>
+
+              <div class="party-controls">
+                <button class="party-arrow" type="button" aria-label="Previous hero" onclick="cycleHero(${index}, -1); event.stopPropagation();">‹</button>
+                <div class="party-player" style="background:${playerColor}">${slot.playerLabel}</div>
+                <button class="party-arrow" type="button" aria-label="Next hero" onclick="cycleHero(${index}, 1); event.stopPropagation();">›</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      root.querySelectorAll('.party-card').forEach(card => {
+        card.addEventListener('click', () => {
+          selectedSlot = Number(card.dataset.slot);
+          renderPartySelect();
+          updateLeftPanelFromSlot(selectedSlot);
+        });
+      });
+    }
+
+    function updateLeftPanelFromSlot(slotIndex = 0) {
+      const slot = partySlots[slotIndex];
+      const hero = getPartyHero(slot);
+
+      document.getElementById('lp-name').textContent = hero.name;
+      document.getElementById('lp-class').textContent = getHeroClass(hero);
+      document.getElementById('lp-role').textContent = getHeroRole(hero);
+      renderHeroSkills(hero);
+
+      const badge = document.getElementById('lp-badge');
+      badge.textContent = slot.playerLabel;
+      badge.style.background = hero.playerColor || '#5a7180';
+
+      ['st-hp', 'st-atk', 'st-def', 'st-mag'].forEach((id, index) => {
+        const el = document.getElementById(id);
+        el.style.width = `${hero.stats[index]}%`;
+        el.style.background = statColors[index];
+      });
+
+      const portrait = document.getElementById('lp-portrait');
+      const fallback = document.getElementById('lp-icon');
+
+      const portraitSrc = getHeroPortraitSrc(hero);
+      if (portraitSrc) {
+        portrait.src = portraitSrc;
+        portrait.alt = hero.name;
+        portrait.classList.remove('hidden');
+        fallback.classList.add('hidden');
+        portrait.onerror = () => {
+          portrait.classList.add('hidden');
+          fallback.classList.remove('hidden');
+          fallback.innerHTML = '<div class="hero-silhouette"></div>';
+        };
+      } else {
+        portrait.classList.add('hidden');
+        fallback.classList.remove('hidden');
+        fallback.innerHTML = '<div class="hero-silhouette"></div>';
+      }
+
+      document.getElementById('player-count').textContent = String(countConnectedPlayers());
+      document.getElementById('lobbyCode').textContent = state.lobbyCode;
+      document.getElementById('seedValue').textContent = state.worldSeed;
+      document.getElementById('startBtn').disabled = !getStartReadyState();
+    }
+
+    window.cycleHero = cycleHero;
+    window.toggleSlotReady = toggleSlotReady;
+    window.getLobbyStartPayload = buildLobbyStartPayload;
+
+    function applyLanguage(lang) {
+      state.lang = lang;
+      document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.lang === lang));
+      localizeStaticText();
+      renderPartySelect();
+      updateLeftPanelFromSlot(selectedSlot);
+    }
+
+    function bindUI() {
+      document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.addEventListener('click', () => applyLanguage(btn.dataset.lang));
+      });
+
+      document.getElementById('difficultySelect').addEventListener('change', e => {
+        state.difficulty = e.target.value;
+        renderDifficultyPips();
+      });
+
+      document.getElementById('seedBtn').addEventListener('click', () => {
+        state.worldSeed = randomSeed();
+        document.getElementById('seedValue').textContent = state.worldSeed;
+        showToast(t('ui.generatedSeed'));
+      });
+
+      document.getElementById('copyLobbyBtn').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(state.lobbyCode);
+          showToast(t('ui.copied'));
+        } catch {
+          showToast(state.lobbyCode);
+        }
+      });
+
+      document.getElementById('startBtn').addEventListener('click', () => {
+        if (!getStartReadyState()) {
+          showToast(t('ui.startBlocked'));
+          return;
+        }
+        const payload = buildLobbyStartPayload();
+        showToast(t('ui.adventureReady'));
+
+        if (window.__HERO_APP__) {
+          window.dispatchEvent(new CustomEvent('hero:lobby-start', { detail: payload }));
+          return;
+        }
+
+        try {
+          sessionStorage.setItem('hero.pendingLobbyStart', JSON.stringify(payload));
+        } catch (error) {
+          console.warn('[Lobby] failed to cache pending start payload', error);
+        }
+
+        window.location.href = new URL('index.html', window.location.href).href;
+      });
+
+      document.getElementById('inviteBtn').addEventListener('click', () => showToast(t('ui.invited')));
+      document.getElementById('changeHeroBtn').addEventListener('click', () => {
+        cycleHero(selectedSlot, 1);
+        showToast(t('ui.heroChanged'));
+      });
+      document.getElementById('settingsBtn').addEventListener('click', () => showToast(t('ui.settingsOpen')));
+    }
+
+    async function init() {
+      const veil = document.getElementById('loadingVeil');
+      if (veil) veil.style.display = 'grid';
+      await preloadKeySprites();
+      if (veil) veil.style.display = 'none';
+      setBackgroundAssets();
+      createStars();
+      bindUI();
+      localizeStaticText();
+      renderPartySelect();
+      updateLeftPanelFromSlot(0);
+      animateStartButton();
+    }
+
+    init();
+  </script>
+</body>
+</html>

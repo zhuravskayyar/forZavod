@@ -1,0 +1,164 @@
+{
+  "image": "world_materials_atlas.png",
+  "size": {
+    "w": 1024,
+    "h": 512
+  },
+  "cell": 256,
+  "columns": 4,
+  "rows": 2,
+  "frames": {
+    "ocean": {
+      "frame": {
+        "x": 18,
+        "y": 18,
+        "w": 220,
+        "h": 220
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "label": "Ocean"
+    },
+    "shallows": {
+      "frame": {
+        "x": 274,
+        "y": 18,
+        "w": 220,
+        "h": 220
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "label": "Shallows"
+    },
+    "grassland": {
+      "frame": {
+        "x": 530,
+        "y": 18,
+        "w": 220,
+        "h": 220
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "label": "Grassland"
+    },
+    "forest": {
+      "frame": {
+        "x": 786,
+        "y": 18,
+        "w": 220,
+        "h": 220
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "label": "Forest"
+    },
+    "mountain": {
+      "frame": {
+        "x": 18,
+        "y": 274,
+        "w": 220,
+        "h": 220
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "label": "Mountain"
+    },
+    "wasteland": {
+      "frame": {
+        "x": 274,
+        "y": 274,
+        "w": 220,
+        "h": 220
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "label": "Wasteland"
+    },
+    "sand": {
+      "frame": {
+        "x": 530,
+        "y": 274,
+        "w": 220,
+        "h": 220
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "label": "Sand"
+    },
+    "dirt": {
+      "frame": {
+        "x": 786,
+        "y": 274,
+        "w": 220,
+        "h": 220
+      },
+      "sourceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 256,
+        "h": 256
+      },
+      "label": "Dirt"
+    }
+  }
+}
