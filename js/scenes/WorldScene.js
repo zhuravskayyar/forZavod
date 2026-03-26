@@ -1370,9 +1370,7 @@ export class WorldScene extends BaseScene {
       if (!card) return;
       const heroIndex = Number(card.dataset.heroIndex);
       if (!Number.isFinite(heroIndex)) return;
-      this.game.selectedHeroIndex = heroIndex;
-      this.game.pathPreview = [];
-      this.syncSelectionContext();
+      this.activateHeroTurn(heroIndex);
       this.renderPartyHud();
       if (!this.camera.userAdjusted) this.fitMapToView();
       this.updateHud(this.map.selected);
@@ -1651,8 +1649,10 @@ export class WorldScene extends BaseScene {
     if (!hero) return null;
 
     this.game.selectedHeroIndex = nextIndex;
-    this.resetHeroTurn(hero);
-    this.rollHeroMovement(hero);
+    if (!hero.turnRolled && !hero.turnEnded) {
+      this.resetHeroTurn(hero);
+      this.rollHeroMovement(hero);
+    }
     this.game.pathPreview = [];
     this.game.activePath = [];
     this.game.moving = false;
@@ -1664,8 +1664,12 @@ export class WorldScene extends BaseScene {
 
   advanceHeroTurn() {
     if (!this.game.party.length) return null;
-    const nextIndex = (this.game.selectedHeroIndex + 1) % this.game.party.length;
-    return this.activateHeroTurn(nextIndex);
+    for (let offset = 1; offset <= this.game.party.length; offset += 1) {
+      const nextIndex = (this.game.selectedHeroIndex + offset) % this.game.party.length;
+      const hero = this.game.party[nextIndex];
+      if (!hero?.turnEnded) return this.activateHeroTurn(nextIndex);
+    }
+    return this.activateHeroTurn(this.game.selectedHeroIndex);
   }
 
   handleEndAction() {
@@ -2352,13 +2356,17 @@ export class WorldScene extends BaseScene {
 
   collectSpawnTiles(origin, count) {
     if (!origin) return [];
-    const picks = [];
+    const preferred = [origin];
+    const fallback = [];
     const visited = new Set([origin.key]);
     const queue = [origin];
 
-    while (queue.length && picks.length < count) {
+    while (queue.length) {
       const current = queue.shift();
-      if (current.terrain !== 'water') picks.push(current);
+      if (current.terrain !== 'water' && current.key !== origin.key) {
+        if (hexDistance(origin, current) >= 2) preferred.push(current);
+        else fallback.push(current);
+      }
       for (const next of this.getNeighbors(current)) {
         if (!next || visited.has(next.key) || next.terrain === 'water') continue;
         visited.add(next.key);
@@ -2366,8 +2374,9 @@ export class WorldScene extends BaseScene {
       }
     }
 
+    const picks = [...preferred, ...fallback];
     while (picks.length < count) picks.push(origin);
-    return picks;
+    return picks.slice(0, count);
   }
 
   createPartyActors(tiles) {
@@ -2410,6 +2419,11 @@ export class WorldScene extends BaseScene {
   isTileOccupied(tile, exceptHeroIndex = -1) {
     if (!tile) return false;
     return this.game.party.some((hero, index) => index !== exceptHeroIndex && hero.tile?.key === tile.key);
+  }
+
+  getHeroIndexAtTile(tile) {
+    if (!tile) return -1;
+    return this.game.party.findIndex((hero) => hero.tile?.key === tile.key);
   }
 
   spawnParty() {
@@ -2593,9 +2607,17 @@ export class WorldScene extends BaseScene {
     this.map.selected = tile;
     this.updateHud(tile);
     const hero = this.getSelectedHero();
-    if (tile.key === hero.tile.key || this.isTileOccupied(tile, this.game.selectedHeroIndex)) {
-      if (tile.key === hero.tile.key && tile.node) this.openNodeMenu(tile.node);
-      else this.closeNodeMenu();
+    const occupiedHeroIndex = this.getHeroIndexAtTile(tile);
+    if (occupiedHeroIndex !== -1) {
+      if (occupiedHeroIndex === this.game.selectedHeroIndex) {
+        if (tile.node) this.openNodeMenu(tile.node);
+        else this.closeNodeMenu();
+      } else {
+        this.activateHeroTurn(occupiedHeroIndex);
+        this.renderPartyHud();
+        if (!this.camera.userAdjusted) this.fitMapToView();
+        this.updateHud(tile);
+      }
       this.draw();
       return;
     }
