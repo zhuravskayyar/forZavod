@@ -3426,6 +3426,31 @@ export class WorldScene extends BaseScene {
     return 10 + Math.max(1, hero?.pipeLevel || 1) * 4;
   }
 
+  handleHeroArrival(hero, tile) {
+    const node = tile?.node;
+    if (!hero || !node) return;
+    if (!this.game.discoveredNodes.includes(node.id)) {
+      const xpReward = this.isCityNode(node) ? 12 + node.tier * 4 : 18 + node.tier * 6;
+      const goldReward = this.isCityNode(node) ? 3 + node.tier * 2 : 2 + node.tier * 3;
+      this.game.discoveredNodes.push(node.id);
+      this.game.gold += goldReward;
+      const result = gainHeroXp(hero, xpReward);
+      const levelSuffix = result.levels.length ? ` Level up to ${hero.level}.` : '';
+      this.game.transientNotice = `Discovered ${node.nameEn || node.id}: +${xpReward} XP, +${goldReward}g.${levelSuffix}`;
+    }
+    this.completeActiveContract(node, hero);
+  }
+
+  completeActiveContract(node, hero) {
+    const contract = this.game.activeContract;
+    if (!contract || contract.targetNodeId !== node.id) return;
+    this.game.gold += contract.goldReward || 0;
+    const result = gainHeroXp(hero, contract.xpReward || 0);
+    this.game.activeContract = null;
+    const levelSuffix = result.levels.length ? ` ${hero.name} reached level ${hero.level}.` : '';
+    this.game.transientNotice = `Contract complete: +${contract.goldReward || 0}g, +${contract.xpReward || 0} XP.${levelSuffix}`;
+  }
+
   getNodeTypeLabel(node) {
     return NODE_TYPE_LABELS_UK[node?.type] || NODE_TYPE_LABELS_UK.poi;
   }
