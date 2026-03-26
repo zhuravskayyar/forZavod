@@ -2314,7 +2314,7 @@ export class WorldScene extends BaseScene {
       for (const next of this.getNeighbors(currentTile)) {
         if (!next || next.terrain === 'water') continue;
         if (blockedKeys.has(next.key) && next.key !== goal.key) continue;
-        const cost = TERRAIN[next.terrain].road * (next.road ? 0.55 : 1);
+        const cost = this.getTileMoveCost(next);
         const tentative = (g.get(current) ?? Infinity) + cost;
         if (tentative < (g.get(next.key) ?? Infinity)) {
           came.set(next.key, current);
@@ -2593,13 +2593,13 @@ export class WorldScene extends BaseScene {
     this.map.selected = tile;
     this.updateHud(tile);
     const hero = this.getSelectedHero();
-    if (tile.terrain === 'water' || !hero?.tile || this.game.moving || !hero.turnRolled || hero.turnEnded || hero.movePoints <= 0) {
-      this.draw();
-      return;
-    }
     if (tile.key === hero.tile.key || this.isTileOccupied(tile, this.game.selectedHeroIndex)) {
       if (tile.key === hero.tile.key && tile.node) this.openNodeMenu(tile.node);
       else this.closeNodeMenu();
+      this.draw();
+      return;
+    }
+    if (tile.terrain === 'water' || !hero?.tile || this.game.moving || !hero.turnRolled || hero.turnEnded || hero.movePoints <= 0) {
       this.draw();
       return;
     }
@@ -2610,7 +2610,14 @@ export class WorldScene extends BaseScene {
         .filter(Boolean),
     );
     const fullPath = this.findPath(hero.tile, tile, blockedKeys);
-    const limitedPath = fullPath.slice(1, hero.movePoints + 1);
+    let spent = 0;
+    const limitedPath = [];
+    for (const step of fullPath.slice(1)) {
+      const cost = this.getTileMoveCost(step);
+      if (!Number.isFinite(cost) || spent + cost > hero.movePoints) break;
+      limitedPath.push(step);
+      spent += cost;
+    }
     this.game.pathPreview = limitedPath;
     if (limitedPath.length) this.beginTravel(limitedPath, this.game.selectedHeroIndex);
     else this.draw();
@@ -2626,7 +2633,8 @@ export class WorldScene extends BaseScene {
   startNextStep() {
     const hero = this.game.party[this.game.movingHeroIndex];
     const actor = this.game.partyActors[this.game.movingHeroIndex];
-    if (!this.game.activePath.length || !hero || !actor || hero.movePoints <= 0) {
+    const nextTile = this.game.activePath[0];
+    if (!this.game.activePath.length || !hero || !actor || hero.movePoints <= 0 || this.getTileMoveCost(nextTile) > hero.movePoints) {
       this.game.moving = false;
       this.game.movingHeroIndex = -1;
       this.game.stepFrom = null;
@@ -2639,7 +2647,6 @@ export class WorldScene extends BaseScene {
       return;
     }
 
-    const nextTile = this.game.activePath[0];
     this.game.stepFrom = { x: actor.x, y: actor.y };
     this.game.stepTo = this.getActorAnchor(nextTile);
     this.game.stepElapsed = 0;
@@ -2733,13 +2740,14 @@ export class WorldScene extends BaseScene {
     if (progress < 1) return;
 
     const reached = this.game.activePath.shift();
+    const stepCost = this.getTileMoveCost(reached);
     hero.tile = reached;
     this.game.partyWorld = { ...this.game.stepTo };
     actor.x = actor.toX;
     actor.y = actor.toY;
     actor.tileKey = reached.key;
     this.map.selected = reached;
-    hero.movePoints = Math.max(0, hero.movePoints - 1);
+    hero.movePoints = Math.max(0, hero.movePoints - stepCost);
     hero.stepsTaken += 1;
     if (reached.node) {
       this.game.activePath = [];
@@ -2754,7 +2762,7 @@ export class WorldScene extends BaseScene {
       this.openNodeMenu(reached.node, 'overview');
     }
 
-    if (this.game.activePath.length && hero.movePoints > 0) {
+    if (this.game.activePath.length && this.getTileMoveCost(this.game.activePath[0]) <= hero.movePoints) {
       this.startNextStep();
     } else {
       this.game.moving = false;
@@ -3369,12 +3377,17 @@ export class WorldScene extends BaseScene {
     return hero?.tile?.node || null;
   }
 
+  getTileMoveCost(tile) {
+    if (!tile || tile.terrain === 'water') return Infinity;
+    return Math.max(1, TERRAIN[tile.terrain].move - (tile.road ? 1 : 0));
+  }
+
   canInteractWithNode(node = this.getSelectedNode(), hero = this.getSelectedHero()) {
     return Boolean(node && hero?.tile && hero.tile.key === node.tileKey && !this.game.moving);
   }
 
   isCityNode(node) {
-    return node?.type === 'city';
+    return Boolean(node && SETTLEMENT_NODE_TYPES.has(node.type));
   }
 
   getNodeVisitLabel(node) {
