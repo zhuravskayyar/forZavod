@@ -18,6 +18,17 @@ import {
   useConsumable,
 } from '../core/progression.js';
 import heroesData from '../data/heroes.js';
+import {
+  INITIAL_WORLD_STATE as INITIAL_STORY_STATE,
+  QUEST_TYPES as STORY_QUEST_TYPES,
+  acceptQuest as acceptStoryQuestState,
+  completeQuest as completeStoryQuestState,
+  getActiveStoryQuests,
+  getPrimaryStoryQuest,
+  getQuestById as getStoryQuestById,
+  getTownQuestBoard,
+  makeStoryState,
+} from '../data/storyCampaign.js';
 import { getTownDefinition } from '../data/towns.js';
 import worldBlueprint from '../data/worldBlueprint.js';
 import { ModalSystem } from '../ui/modalSystem.js';
@@ -1215,6 +1226,7 @@ export class WorldScene extends BaseScene {
       isNight: true,
       nightOpacity: NIGHT_OVERLAY_MAX,
       activeContract: null,
+      storyState: makeStoryState(INITIAL_STORY_STATE),
       nodeMenu: {
         open: false,
         nodeId: null,
@@ -1423,6 +1435,7 @@ export class WorldScene extends BaseScene {
     this.game.activePath = [];
     this.game.moving = false;
     this.game.activeContract = runtime.activeContract || null;
+    this.game.storyState = makeStoryState(runtime.storyState || INITIAL_STORY_STATE);
     this.game.nodeMenu = {
       open: false,
       nodeId: null,
@@ -2712,6 +2725,7 @@ export class WorldScene extends BaseScene {
       state.world.clearedNodes = [...this.game.clearedNodes];
       state.world.shopStockByNode = structuredClone(this.game.shopStockByNode);
       state.world.activeContract = this.game.activeContract ? structuredClone(this.game.activeContract) : null;
+      state.world.storyState = structuredClone(this.game.storyState || INITIAL_STORY_STATE);
       state.world.party = structuredClone(this.game.party.map((hero) => serializeHero(hero)));
       return state;
     });
@@ -3439,6 +3453,7 @@ export class WorldScene extends BaseScene {
       this.game.transientNotice = `Discovered ${node.nameEn || node.id}: +${xpReward} XP, +${goldReward}g.${levelSuffix}`;
     }
     this.completeActiveContract(node, hero);
+    this.completeStoryQuestAtNode(node, hero);
   }
 
   completeActiveContract(node, hero) {
@@ -3449,6 +3464,134 @@ export class WorldScene extends BaseScene {
     this.game.activeContract = null;
     const levelSuffix = result.levels.length ? ` ${hero.name} reached level ${hero.level}.` : '';
     this.game.transientNotice = `Contract complete: +${contract.goldReward || 0}g, +${contract.xpReward || 0} XP.${levelSuffix}`;
+    this.updateObjective();
+  }
+
+  getStoryState() {
+    if (!this.game.storyState) {
+      this.game.storyState = makeStoryState(INITIAL_STORY_STATE);
+    }
+    return this.game.storyState;
+  }
+
+  getStoryPartyHeroIds() {
+    return this.game.party.map((hero) => hero.id).filter(Boolean);
+  }
+
+  getStoryPartyLevel() {
+    return this.game.party.reduce((maxLevel, hero) => Math.max(maxLevel, hero?.level || 1), 1);
+  }
+
+  getPrimaryStoryQuestData() {
+    return getPrimaryStoryQuest(this.getStoryState());
+  }
+
+  getTownStoryQuests(node) {
+    if (!node) return [];
+    return getTownQuestBoard(
+      node.id,
+      this.getStoryState(),
+      this.getStoryPartyLevel(),
+      this.getStoryPartyHeroIds(),
+    );
+  }
+
+  getStoryQuestTypeLabel(type) {
+    const labels = {
+      [STORY_QUEST_TYPES.MAIN]: 'Main Quest',
+      [STORY_QUEST_TYPES.REGION]: 'Region Lead',
+      [STORY_QUEST_TYPES.TOWN]: 'Town Quest',
+      [STORY_QUEST_TYPES.PERSONAL]: 'Personal',
+    };
+    return labels[type] || 'Story';
+  }
+
+  getStoryQuestIcon(quest) {
+    if (quest?.type === STORY_QUEST_TYPES.MAIN) return '✦';
+    if (quest?.type === STORY_QUEST_TYPES.REGION) return '⌖';
+    if (quest?.type === STORY_QUEST_TYPES.TOWN) return '⚑';
+    if (quest?.type === STORY_QUEST_TYPES.PERSONAL) return '☖';
+    return '✦';
+  }
+
+  formatStoryQuestReward(quest) {
+    const parts = [];
+    if (quest?.reward?.gold) parts.push(`${quest.reward.gold}g`);
+    if (quest?.reward?.xp) parts.push(`${quest.reward.xp} XP`);
+    if (Object.keys(quest?.reward?.reputation || {}).length) parts.push('Rep');
+    if (quest?.reward?.items?.length) parts.push(`${quest.reward.items.length} item`);
+    return parts.join(' • ') || 'Story reward';
+  }
+
+  renderStoryQuestTags(quest) {
+    const target = this.getNodeById(quest?.targetNodeId);
+    const tags = [
+      `<span class="ftk-modal-tag">${this.getStoryQuestTypeLabel(quest?.type)}</span>`,
+      quest?.recommendedLevel?.length
+        ? `<span class="ftk-modal-tag">Lvl ${quest.recommendedLevel[0]}-${quest.recommendedLevel[1] || quest.recommendedLevel[0]}</span>`
+        : '',
+      target ? `<span class="ftk-modal-tag">${target.nameUk || target.nameEn}</span>` : '',
+      quest?.heroId ? `<span class="ftk-modal-tag">Hero ${quest.heroId}</span>` : '',
+    ].filter(Boolean).join('');
+    return tags ? `<div class="ftk-modal-tag-grid">${tags}</div>` : '';
+  }
+
+  acceptStoryQuest(questId) {
+    const quest = getStoryQuestById(questId);
+    if (!quest) return false;
+    acceptStoryQuestState(this.getStoryState(), questId);
+    this.updateObjective();
+    this.setNodeMenuNotice(`Story quest accepted: ${quest.title}.`);
+    const hero = this.getSelectedHero();
+    const node = this.getCurrentNode(hero);
+    if (node?.id === quest.targetNodeId) {
+      this.completeStoryQuestAtNode(node, hero);
+    }
+    this.refreshSceneUI();
+    return true;
+  }
+
+  completeStoryQuestAtNode(node, hero) {
+    if (!node || !hero) return false;
+    const storyState = this.getStoryState();
+    const matchingQuests = getActiveStoryQuests(storyState).filter((quest) => {
+      if (quest.targetNodeId !== node.id) return false;
+      if (quest.heroId && quest.heroId !== hero.id) return false;
+      return true;
+    });
+    if (!matchingQuests.length) return false;
+
+    const completedTitles = [];
+    const rewardItems = [];
+    let totalGold = 0;
+    let totalXp = 0;
+    let leveledHero = false;
+
+    matchingQuests.forEach((quest) => {
+      const resolvedQuest = completeStoryQuestState(storyState, quest.id);
+      if (!resolvedQuest) return;
+      completedTitles.push(resolvedQuest.title);
+      totalGold += resolvedQuest.reward?.gold || 0;
+      totalXp += resolvedQuest.reward?.xp || 0;
+      this.game.gold += resolvedQuest.reward?.gold || 0;
+      const levelResult = gainHeroXp(hero, resolvedQuest.reward?.xp || 0);
+      if (levelResult.levels.length) leveledHero = true;
+      for (const itemId of resolvedQuest.reward?.items || []) {
+        const granted = addItemToInventory(hero, itemId);
+        if (granted?.name) rewardItems.push(granted.name);
+      }
+    });
+
+    if (!completedTitles.length) return false;
+
+    this.updateObjective();
+    const rewardBits = [];
+    if (totalGold) rewardBits.push(`+${totalGold}g`);
+    if (totalXp) rewardBits.push(`+${totalXp} XP`);
+    if (rewardItems.length) rewardBits.push(`loot: ${rewardItems.join(', ')}`);
+    const levelSuffix = leveledHero ? ` ${hero.name} reached level ${hero.level}.` : '';
+    this.game.transientNotice = `Story quest complete: ${completedTitles.join(', ')}${rewardBits.length ? ` (${rewardBits.join(', ')})` : ''}.${levelSuffix}`;
+    return true;
   }
 
   getNodeTypeLabel(node) {
@@ -3921,6 +4064,10 @@ export class WorldScene extends BaseScene {
     const hero = this.getSelectedHero();
     const stockBuckets = this.getStockBuckets(node);
     const smithOffers = this.getTownSmithOffers(hero);
+    const storyState = this.getStoryState();
+    const activeStoryQuests = getActiveStoryQuests(storyState);
+    const townStoryQuests = this.getTownStoryQuests(node);
+    const primaryStoryQuest = this.getPrimaryStoryQuestData();
     return {
       shop: {
         eyebrow: 'Trade',
@@ -4050,8 +4197,12 @@ export class WorldScene extends BaseScene {
       quests: {
         eyebrow: 'Contracts',
         title: `${node.nameEn || 'Town'} Board`,
-        subtitle: 'Regional contracts tied into the current route and objective loop.',
-        footerNote: this.game.activeContract ? `Active contract: ${this.game.activeContract.titleUk}` : 'Only one active contract is tracked at a time.',
+        subtitle: 'Story quests and local contracts tied into the current route and objective loop.',
+        footerNote: primaryStoryQuest
+          ? `Primary story: ${primaryStoryQuest.title}`
+          : this.game.activeContract
+            ? `Active contract: ${this.game.activeContract.titleUk}`
+            : 'Story and local contracts can run in parallel.',
         footerActions: [
           { label: 'Close', variant: 'primary', close: true },
         ],
@@ -4059,7 +4210,37 @@ export class WorldScene extends BaseScene {
           <div class="ftk-modal-panel">
             <div class="ftk-modal-panel-head">
               <div>
-                <div class="ftk-modal-panel-title">Available Quests</div>
+                <div class="ftk-modal-panel-title">Active Story</div>
+                <div class="ftk-modal-panel-sub">${primaryStoryQuest ? primaryStoryQuest.objective : 'No active story pressure right now.'}</div>
+              </div>
+            </div>
+            <div class="ftk-modal-panel-body">
+              ${activeStoryQuests.map((quest) => this.renderModalRowCard(
+                { icon: this.getStoryQuestIcon(quest), name: quest.title, desc: quest.objective },
+                `<div class="ftk-modal-tag">${this.formatStoryQuestReward(quest)}</div>`,
+                this.renderStoryQuestTags(quest),
+              )).join('') || '<div class="ftk-modal-empty">No active story quests.</div>'}
+            </div>
+          </div>
+          <div class="ftk-modal-panel">
+            <div class="ftk-modal-panel-head">
+              <div>
+                <div class="ftk-modal-panel-title">Town Story Board</div>
+                <div class="ftk-modal-panel-sub">${node.nameUk || node.nameEn}</div>
+              </div>
+            </div>
+            <div class="ftk-modal-panel-body">
+              ${townStoryQuests.map((quest) => this.renderModalRowCard(
+                { icon: this.getStoryQuestIcon(quest), name: quest.title, desc: quest.summary || quest.objective },
+                `<div class="ftk-modal-tag">${this.formatStoryQuestReward(quest)}</div><button class="ftk-modal-btn ftk-modal-btn--primary" type="button" data-modal-action="take-story-quest" data-quest-id="${quest.id}">Take</button>`,
+                this.renderStoryQuestTags(quest),
+              )).join('') || '<div class="ftk-modal-empty">No story quests unlocked in this town.</div>'}
+            </div>
+          </div>
+          <div class="ftk-modal-panel">
+            <div class="ftk-modal-panel-head">
+              <div>
+                <div class="ftk-modal-panel-title">Local Contracts</div>
                 <div class="ftk-modal-panel-sub">${node.nameEn || node.id}</div>
               </div>
             </div>
@@ -4067,11 +4248,15 @@ export class WorldScene extends BaseScene {
               ${this.getNodeContracts(node).map((contract) => this.renderModalRowCard(
                 { icon: contract.type === 'Bounty' ? '☠' : contract.type === 'Delivery' ? '✉' : contract.type === 'Retrieval' ? '✶' : '⛶', name: contract.titleUk, desc: contract.objective },
                 `<div class="ftk-modal-tag">${contract.reward}</div><button class="ftk-modal-btn ftk-modal-btn--primary" type="button" data-modal-action="take-contract" data-contract-id="${contract.id}">Take</button>`,
-              )).join('') || '<div class="ftk-modal-empty">No quests available here.</div>'}
+              )).join('') || '<div class="ftk-modal-empty">No local contracts available here.</div>'}
             </div>
           </div>
         `,
         onBodyAction: (dataset) => {
+          if (dataset.modalAction === 'take-story-quest') {
+            this.acceptStoryQuest(dataset.questId);
+            return;
+          }
           if (dataset.modalAction === 'take-contract') {
             this.acceptNodeContract(dataset.contractId);
             this.modalSystem.close();
@@ -4794,6 +4979,17 @@ export class WorldScene extends BaseScene {
   }
 
   updateObjective() {
+    if (this.game.activeContract?.objective) {
+      this.game.objective = this.game.activeContract.objective;
+      return;
+    }
+
+    const primaryStoryQuest = this.getPrimaryStoryQuestData();
+    if (primaryStoryQuest?.objective) {
+      this.game.objective = primaryStoryQuest.objective;
+      return;
+    }
+
     const nextHub = this.map.nodeById.get('main_city');
     const finalGoal = this.map.nodeById.get('main_dungeon');
     this.game.objective = nextHub
@@ -5030,7 +5226,10 @@ export class WorldScene extends BaseScene {
       const loreParts = [];
       if (node?.storySummaryUk || node?.notes) loreParts.push(node.storySummaryUk || node.notes);
       if (monsterPack) loreParts.push(this.getMonsterPackLore(monsterPack));
+      const primaryStoryQuest = this.getPrimaryStoryQuestData();
+      if (primaryStoryQuest?.title) loreParts.push(`Story: ${primaryStoryQuest.title}`);
       if (this.game.activeContract?.titleUk) loreParts.push(`Contract: ${this.game.activeContract.titleUk}`);
+      if (this.game.transientNotice) loreParts.push(this.game.transientNotice);
       this.dom.selectedLore.textContent = loreParts.join(' | ');
       this.dom.selectedTags.innerHTML = [...this.getNodeServiceLabels(node), ...this.getMonsterPackTags(monsterPack)]
         .slice(0, 6)

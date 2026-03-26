@@ -1,8 +1,8 @@
-import { Store } from './core/store.js?v=20260326-turnfix1';
-import { Router } from './core/router.js?v=20260326-turnfix1';
+import { Store } from './core/store.js?v=20260326-story1';
+import { Router } from './core/router.js?v=20260326-story1';
 import { GAME_STATES } from './core/gameStates.js';
-import { MenuScene } from './scenes/MenuScene.js?v=20260326-turnfix1';
-import { WorldScene } from './scenes/WorldScene.js?v=20260326-turnfix1';
+import { MenuScene } from './scenes/MenuScene.js?v=20260326-story1';
+import { WorldScene } from './scenes/WorldScene.js?v=20260326-story1';
 
 window.__HERO_APP__ = true;
 
@@ -25,6 +25,7 @@ const initialState = {
     clearedNodes: [],
     discoveredNodes: [],
     shopStockByNode: {},
+    storyState: null,
   },
 };
 
